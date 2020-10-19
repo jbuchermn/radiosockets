@@ -1,14 +1,14 @@
 CC = gcc
-CFLAGS = -Wall -g
-INCLUDES = -Iinclude
+CFLAGS = -Wall -g -O3
+INCLUDES = -Iinclude -Idependencies
 LFLAGS =
-LIBS = 
-SRCS = src/main.c src/command_loop.c
+LIBS = -lpcap
+SRCS = src/main.c src/rs_command_loop.c src/rs_packet.c src/rs_channel_layer_pcap.c dependencies/radiotap-library/radiotap.c
 
 OBJS = $(SRCS:.c=.o)
 
 # define the executable file 
-MAIN = radiosocketsd
+MAIN = radiosocketd
 
 .PHONY: clean
 
@@ -22,4 +22,4 @@ $(MAIN): $(OBJS)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $<  -o $@
 
 clean:
-	$(RM) *.o *~ $(MAIN)
+	$(RM) $(OBJS) $(MAIN)

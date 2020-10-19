@@ -4,30 +4,51 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#include <signal.h>
 
-#include "server_state.h"
-#include "command_loop.h"
+#include "rs_server_state.h"
+#include "rs_command_loop.h"
+#include "rs_channel_layer_pcap.h"
+#include "rs_packet.h"
+
+static struct rs_server_state state;
+
+void signal_handler(int sig_num){
+    state.running = 0;
+    signal(SIGINT, signal_handler); 
+}
 
 int main() {
-	setlogmask (LOG_UPTO (LOG_NOTICE));
-	openlog ("radiosocketsd", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
-    syslog(LOG_NOTICE, "Starting radiosocketsd...");
+    signal(SIGINT, signal_handler); 
 
-    struct server_state state;
+	setlogmask (LOG_UPTO (LOG_NOTICE));
+	openlog ("radiosocketd", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
+    syslog(LOG_NOTICE, "Starting radiosocketd...");
+
     state.running = 1;
 
-    struct command_loop command_loop;
+    struct rs_command_loop command_loop;
     state.command_loop = &command_loop;
 
-    command_loop_init(&command_loop, 512);
+    rs_command_loop_init(&command_loop, 512);
+
+    struct rs_channel_layer_pcap layer1_pcap;
+    rs_channel_layer_pcap_init(&layer1_pcap, "wlp3s0");
 
     while (state.running){
-        command_loop_run(&command_loop, &state);
+        rs_command_loop_run(&command_loop, &state);
+
+        rs_channel_t channel;
+        struct rs_packet packet;
+        rs_channel_layer_receive(&layer1_pcap.super, &packet, &channel);
     }
 
-    command_loop_destroy(&command_loop);
+    syslog(LOG_NOTICE, "Shutting down radiosocketd...");
 
-    syslog(LOG_NOTICE, "Shutting down radiosocketsd...");
+    rs_command_loop_destroy(&command_loop);
+    rs_channel_layer_destroy(&layer1_pcap.super);
+
+    syslog(LOG_NOTICE, "...done");
 	closelog();
     return 0;
 }

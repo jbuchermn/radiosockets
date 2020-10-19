@@ -8,15 +8,15 @@
 #include <string.h>
 #include <syslog.h>
 
-#include "server_state.h"
-#include "command_loop.h"
+#include "rs_server_state.h"
+#include "rs_command_loop.h"
 
-void handle_command(struct command_payload* command, struct command_response_payload* response, struct server_state* state){
+static void handle_command(struct rs_command_payload* command, struct rs_command_response_payload* response, struct rs_server_state* state){
     if(command->command == 13) state->running = 0;
 }
 
 
-void send_msg(int sock, void* msg, uint32_t msgsize){
+static void send_msg(int sock, void* msg, uint32_t msgsize){
     if (write(sock, msg, msgsize) < 0){
         syslog(LOG_ERR, "send_message: can't send message.");
         return;
@@ -25,7 +25,7 @@ void send_msg(int sock, void* msg, uint32_t msgsize){
     return;
 }
 
-void command_loop_init(struct command_loop* loop, unsigned int buffer_size){
+void rs_command_loop_init(struct rs_command_loop* loop, unsigned int buffer_size){
     loop->buffer_size = buffer_size;
     loop->buffer = calloc(buffer_size, sizeof(char));
 
@@ -61,7 +61,7 @@ void command_loop_init(struct command_loop* loop, unsigned int buffer_size){
     syslog(LOG_NOTICE, "create_socket: Server listening on socket");
 }
 
-void command_loop_destroy(struct command_loop* loop){
+void rs_command_loop_destroy(struct rs_command_loop* loop){
     close(loop->socket_fd);
     free(loop->buffer);
 
@@ -69,7 +69,7 @@ void command_loop_destroy(struct command_loop* loop){
     loop->buffer = NULL;
 }
 
-void command_loop_run(struct command_loop* loop, struct server_state* state){
+void rs_command_loop_run(struct rs_command_loop* loop, struct rs_server_state* state){
     /* Connect to client (non-blocking) - return if no connection */
     struct sockaddr_un client;
     unsigned int clilen = sizeof(client);
@@ -83,16 +83,16 @@ void command_loop_run(struct command_loop* loop, struct server_state* state){
     bzero(loop->buffer, loop->buffer_size);
     int nread;
     while ((nread=read(client_socket_fd, loop->buffer, loop->buffer_size)) > 0){
-        struct command_payload *p = (struct command_payload*) loop->buffer;
+        struct rs_command_payload *p = (struct rs_command_payload*) loop->buffer;
 
         syslog(LOG_NOTICE, "...id=%d, command=%d", p->id, p->command);
 
-        struct command_response_payload response;
+        struct rs_command_response_payload response;
         response.id = p->id;
 
         handle_command(p, &response, state);
 
-        send_msg(client_socket_fd, &response, sizeof(struct command_response_payload));
+        send_msg(client_socket_fd, &response, sizeof(struct rs_command_response_payload));
     }
     close(client_socket_fd);
 }
