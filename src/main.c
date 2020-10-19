@@ -39,8 +39,11 @@ int main() {
         rs_command_loop_run(&command_loop, &state);
 
         rs_channel_t channel;
-        struct rs_packet packet;
-        rs_channel_layer_receive(&layer1_pcap.super, &packet, &channel);
+        struct rs_packet* packet;
+        if(rs_channel_layer_receive(&layer1_pcap.super, &packet, &channel)){
+            rs_packet_destroy(packet);
+            free(packet);
+        }
     }
 
     syslog(LOG_NOTICE, "Shutting down radiosocketd...");

@@ -9,8 +9,9 @@
 #include "radiotap-library/platform.h"
 #include "rs_util.h"
 #include "rs_channel_layer_pcap.h"
+#include "rs_packet.h"
 
-struct rs_channel_layer_vtable vtable;
+static struct rs_channel_layer_vtable vtable;
 
 void rs_channel_layer_pcap_init(struct rs_channel_layer_pcap* layer, char* device_name){
     layer->super.vtable = &vtable;
@@ -64,7 +65,7 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer* super, struct rs_pac
     return 0;
 }
 
-int rs_channel_layer_pcap_receive(struct rs_channel_layer* super, struct rs_packet* packet, rs_channel_t* channel){
+int rs_channel_layer_pcap_receive(struct rs_channel_layer* super, struct rs_packet** packet, rs_channel_t* channel){
     struct rs_channel_layer_pcap* layer = rs_cast(rs_channel_layer_pcap, super);
     if(layer->pcap == NULL){
         return 0;
@@ -82,8 +83,8 @@ int rs_channel_layer_pcap_receive(struct rs_channel_layer* super, struct rs_pack
         int mcs_flags = -1;
         int mcs = -1;
         int rate = -1;
-        int channel = -1;
-        int channel_flags = -1;
+        int chan = -1;
+        int chan_flags = -1;
         int antenna = -1;
 
         while(status == 0){
@@ -102,8 +103,8 @@ int rs_channel_layer_pcap_receive(struct rs_channel_layer* super, struct rs_pack
                 rate = *(uint8_t*)(it.this_arg);
                 break;
             case IEEE80211_RADIOTAP_CHANNEL:
-                channel = get_unaligned((uint16_t*)(it.this_arg));
-                channel_flags = get_unaligned(((uint16_t*)(it.this_arg))+1);
+                chan = get_unaligned((uint16_t*)(it.this_arg));
+                chan_flags = get_unaligned(((uint16_t*)(it.this_arg))+1);
                 break;
             case IEEE80211_RADIOTAP_ANTENNA:
                 antenna = *(uint8_t*)(it.this_arg);
@@ -121,15 +122,22 @@ int rs_channel_layer_pcap_receive(struct rs_channel_layer* super, struct rs_pack
             fcs_ok = 0;
         }
 
-        const uint8_t* packet = radiotap_header + it._max_length;
-        int packet_len = header.caplen - it._max_length;
+        const uint8_t* payload = radiotap_header + it._max_length;
+        int payload_len = header.caplen - it._max_length;
         if(flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_FCS)){
-            packet_len -= 4;
+            payload_len -= 4;
         }
 
-        /* syslog(LOG_NOTICE, "Flags: %d, MCS: %02x / %02x / %d, Rate: %d, Channel: %d / %02x, Antenna: %d, FCS: %d, Payload: %db", flags, mcs_known, mcs_flags, mcs, rate, channel, channel_flags, antenna, fcs_ok, packet_len); */
-        packet += 16;
-        syslog(LOG_NOTICE, "%02x:%02x:%02x:%02x:%02x:%02x", *packet, *(packet+1), *(packet+2), *(packet+3), *(packet+4), *(packet+5));
+        syslog(LOG_NOTICE, "Flags: %d, MCS: %02x / %02x / %d, Rate: %d, Channel: %d / %02x, Antenna: %d, FCS: %d, Payload: %db", flags, mcs_known, mcs_flags, mcs, rate, chan, chan_flags, antenna, fcs_ok, payload_len);
+
+        /* TODO */
+        *channel = 0;
+
+        uint8_t* payload_copy = calloc(payload_len, sizeof(uint8_t));
+        memcpy(payload_copy, payload, payload_len);
+
+        *packet = calloc(1, sizeof(struct rs_packet));
+        rs_packet_init(*packet, NULL, payload_copy, payload_len);
 
         return 1;
     }
@@ -149,7 +157,7 @@ int rs_channel_layer_pcap_ch_n2(struct rs_channel_layer* super){
     return 10;
 }
 
-struct rs_channel_layer_vtable vtable = {
+static struct rs_channel_layer_vtable vtable = {
     .destroy = rs_channel_layer_pcap_destroy,
     .transmit = rs_channel_layer_pcap_transmit,
     .receive = rs_channel_layer_pcap_receive,

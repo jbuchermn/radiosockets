@@ -3,7 +3,7 @@ CFLAGS = -Wall -g -O3
 INCLUDES = -Iinclude -Idependencies
 LFLAGS =
 LIBS = -lpcap
-SRCS = src/main.c src/rs_command_loop.c src/rs_packet.c src/rs_channel_layer_pcap.c dependencies/radiotap-library/radiotap.c
+SRCS = src/main.c src/rs_command_loop.c src/rs_channel_layer_pcap.c src/rs_packet.c dependencies/radiotap-library/radiotap.c
 
 OBJS = $(SRCS:.c=.o)
 
