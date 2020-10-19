@@ -40,7 +40,7 @@ void command_loop_init(struct command_loop* loop, unsigned int buffer_size){
     bzero((char *) &addr, sizeof(addr));
 
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, "socket", sizeof(addr.sun_path)-1);
+    strncpy(addr.sun_path, CONFIG_SOCKET_FILE, sizeof(addr.sun_path)-1);
 
     /* rm socket-file */
     remove(addr.sun_path);

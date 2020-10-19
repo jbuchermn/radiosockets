@@ -1,9 +1,9 @@
 CC = gcc
 CFLAGS = -Wall -g
-INCLUDES =
+INCLUDES = -Iinclude
 LFLAGS =
 LIBS = 
-SRCS = main.c command_loop.c
+SRCS = src/main.c src/command_loop.c
 
 OBJS = $(SRCS:.c=.o)
 

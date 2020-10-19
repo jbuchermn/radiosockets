@@ -10,7 +10,7 @@ class ResponsePayload(ctypes.Structure):
     _fields_ = [("id", ctypes.c_uint32)]
 
 
-CONFIG_SOCKET = "socket"
+CONFIG_SOCKET = "/tmp/radiosockets_conf"
 
 def send_command(id_, command):
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

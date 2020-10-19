@@ -1,6 +1,8 @@
 #ifndef COMMAND_LOOP_H
 #define COMMAND_LOOP_H
 
+#define CONFIG_SOCKET_FILE "/tmp/radiosockets_conf"
+
 struct server_state;
 
 struct command_loop {
