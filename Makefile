@@ -8,7 +8,7 @@ SRCS = src/main.c src/command_loop.c
 OBJS = $(SRCS:.c=.o)
 
 # define the executable file 
-MAIN = server
+MAIN = radiosocketsd
 
 .PHONY: clean
 

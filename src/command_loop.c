@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 
 #include "server_state.h"
 #include "command_loop.h"
@@ -17,10 +18,10 @@ void handle_command(struct command_payload* command, struct command_response_pay
 
 void send_msg(int sock, void* msg, uint32_t msgsize){
     if (write(sock, msg, msgsize) < 0){
-        printf("send_message: can't send message.\n");
+        syslog(LOG_ERR, "send_message: can't send message.");
         return;
     }
-    printf("send_message: successful, %d bytes\n", msgsize);
+    syslog(LOG_NOTICE, "send_message: successful, %d bytes", msgsize);
     return;
 }
 
@@ -30,10 +31,10 @@ void command_loop_init(struct command_loop* loop, unsigned int buffer_size){
 
     /* create socket */
     if ((loop->socket_fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0){
-        printf("ERROR: Socket creation failed\n");
+        syslog(LOG_ERR, "create_socket: Socket creation failed");
         exit(1);
     }
-    printf("create_socket: Socket created\n");
+    syslog(LOG_NOTICE, "create_socket: Socket created");
 
     /* setup socket configuration */
     struct sockaddr_un addr;
@@ -47,17 +48,17 @@ void command_loop_init(struct command_loop* loop, unsigned int buffer_size){
 
     /* bind to socket */
     if (bind(loop->socket_fd, (struct sockaddr *)&addr , sizeof(addr)) < 0){
-        printf("ERROR: Bind failed\n");
+        syslog(LOG_ERR, "create_socket: Bind failed");
         exit(1);
     }
     listen(loop->socket_fd, 3);
-    printf("create_socket: Bind done\n");
+    syslog(LOG_NOTICE, "create_socket: Bind done");
 
     /* put socket into nonblocking mode */
     int flags = fcntl(loop->socket_fd, F_GETFL);
     fcntl(loop->socket_fd, F_SETFL, flags | O_NONBLOCK);
 
-    printf("create_socket: Server listening on socket\n");
+    syslog(LOG_NOTICE, "create_socket: Server listening on socket");
 }
 
 void command_loop_destroy(struct command_loop* loop){
@@ -77,16 +78,14 @@ void command_loop_run(struct command_loop* loop, struct server_state* state){
         return;
     }
 
-    printf("----------------------------\n");
-    printf("New command: ");
+    syslog(LOG_NOTICE, "Received command...");
 
     bzero(loop->buffer, loop->buffer_size);
     int nread;
     while ((nread=read(client_socket_fd, loop->buffer, loop->buffer_size)) > 0){
         struct command_payload *p = (struct command_payload*) loop->buffer;
 
-        printf("%d bytes, ", nread);
-        printf("id=%d, command=%d\n", p->id, p->command);
+        syslog(LOG_NOTICE, "...id=%d, command=%d", p->id, p->command);
 
         struct command_response_payload response;
         response.id = p->id;
@@ -95,6 +94,5 @@ void command_loop_run(struct command_loop* loop, struct server_state* state){
 
         send_msg(client_socket_fd, &response, sizeof(struct command_response_payload));
     }
-    printf("----------------------------\n");
     close(client_socket_fd);
 }
