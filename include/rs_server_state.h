@@ -5,7 +5,7 @@ struct rs_command_loop;
 
 struct rs_server_state {
     int running;
-    struct rs_command_loop* command_loop;
+    struct rs_command_loop *command_loop;
 };
 
 #endif
