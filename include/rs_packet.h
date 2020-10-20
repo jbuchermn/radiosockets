@@ -9,7 +9,7 @@ struct rs_packet {
     /* Only one should be nonnull */
     struct rs_packet *payload_packet;
 
-    /* if data is set, rs_packet takes ownership */
+    int payload_owner;
     uint8_t *payload_data;
     int payload_data_len;
 

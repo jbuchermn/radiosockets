@@ -8,12 +8,13 @@
 #include "rs_packet.h"
 
 #define RS_PCAP_TX_BUFSIZE 2048
+#define RS_PCAP_HEADER_CODE_1 0xFE
+#define RS_PCAP_HEADER_CODE_2 0xDC
 
 struct rs_channel_layer_pcap {
     struct rs_channel_layer super;
 
     pcap_t *pcap;
-    struct ieee80211_radiotap_header tx_header;
 };
 
 void rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
@@ -29,7 +30,7 @@ void rs_channel_layer_pcap_packet_init(
     struct rs_channel_layer_pcap_packet *packet,
     struct rs_packet *payload_packet, uint8_t *payload_data,
     int payload_data_len, rs_channel_t channel);
-void rs_channel_layer_pcap_packet_unpack(
+int rs_channel_layer_pcap_packet_unpack(
     struct rs_channel_layer_pcap_packet *packet, uint8_t *payload_data,
     int payload_data_len);
 

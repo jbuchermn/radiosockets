@@ -21,7 +21,7 @@ void signal_handler(int sig_num) {
 int main() {
     signal(SIGINT, signal_handler);
 
-    setlogmask(LOG_UPTO(LOG_NOTICE));
+    setlogmask(LOG_UPTO(LOG_DEBUG));
     openlog("radiosocketd", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
     syslog(LOG_NOTICE, "Starting radiosocketd...");
 
