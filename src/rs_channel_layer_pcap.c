@@ -52,7 +52,7 @@ static int nl_command_init(struct nl_command *command,
 
     command->msg = nlmsg_alloc();
     if (!command->msg) {
-        fprintf(stderr, "Failed to allocate netlink message.\n");
+        syslog(LOG_ERR, "Failed to allocate netlink message");
         return -2;
     }
     genlmsg_put(command->msg, NL_AUTO_PORT, NL_AUTO_SEQ, root->nl_id, 0, flags,
@@ -97,7 +97,6 @@ static int nl_cb_get_wiphy(struct nl_msg *msg, void *arg) {
                             rem_mode) {
             if (nla_type(nl_mode) == NL80211_IFTYPE_MONITOR) {
                 if (tb_msg[NL80211_ATTR_WIPHY]) {
-                    printf("%d\n", ret->n_capable_phys);
                     ret->capable_phys[ret->n_capable_phys] =
                         nla_get_u32(tb_msg[NL80211_ATTR_WIPHY]);
                     ret->n_capable_phys++;
@@ -175,18 +174,22 @@ static int nl_cb_new_interface(struct nl_msg *msg, void *arg) {
  */
 static int nl_cb_default(struct nl_msg *msg, void *arg) { return NL_OK; }
 
-static void nl_set_channel(struct rs_channel_layer_pcap* layer, uint16_t channel){
-    if(channel == layer->on_channel) return;
+static void nl_set_channel(struct rs_channel_layer_pcap *layer,
+                           uint16_t channel) {
+    if (channel == layer->on_channel)
+        return;
 
     struct nl_command cmd;
-    nl_command_init(&cmd, layer, NL80211_CMD_SET_WIPHY, 0,
-                    nl_cb_default);
+    nl_command_init(&cmd, layer, NL80211_CMD_SET_WIPHY, 0, nl_cb_default);
     nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY, layer->nl_wiphy);
 
-    nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_FREQ, 2412 + 5*channel);
-    nla_put_u32(cmd.msg, NL80211_ATTR_CHANNEL_WIDTH, NL80211_CHAN_WIDTH_20_NOHT);
+    nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_FREQ, 2412 + 5 * channel);
+    nla_put_u32(cmd.msg, NL80211_ATTR_CHANNEL_WIDTH,
+                NL80211_CHAN_WIDTH_20_NOHT);
 
     nl_command_run(&cmd);
+
+    layer->on_channel = channel;
 }
 
 int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
@@ -300,13 +303,14 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
 
     /* try and remove other interfaces */
     for (int i = 0; i < ret1.n_other_interfaces; i++) {
-        printf("Deleting unused interface %d...\n", ret1.other_interfaces[i]);
+        syslog(LOG_NOTICE, "Deleting unused interface %d...\n",
+               ret1.other_interfaces[i]);
 
         nl_command_init(&cmd, layer, NL80211_CMD_DEL_INTERFACE, 0,
                         nl_cb_default);
         nla_put_u32(cmd.msg, NL80211_ATTR_IFINDEX, ret1.other_interfaces[i]);
         nl_command_run(&cmd);
-        printf("...done\n");
+        syslog(LOG_NOTICE, "...done\n");
     }
 
     /* ip link set ifname up */
@@ -368,12 +372,12 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
 
 void rs_channel_layer_pcap_destroy(struct rs_channel_layer *super) {
     struct rs_channel_layer_pcap *layer = rs_cast(rs_channel_layer_pcap, super);
-    if(layer->pcap) pcap_close(layer->pcap);
+    if (layer->pcap)
+        pcap_close(layer->pcap);
     nl_cb_put(layer->nl_cb);
     nl_close(layer->nl_socket);
     nl_socket_free(layer->nl_socket);
 }
-
 
 static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
     0x00, // it_version
@@ -507,10 +511,6 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             }
         }
 
-        /* criteria to skip frames with not enough info */
-        if (antenna == -1)
-            return 0;
-
         if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) {
             syslog(LOG_DEBUG, "Received bad FCS packet");
             return 0;
@@ -522,11 +522,10 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             payload_len -= 4;
         }
 
-        syslog(LOG_DEBUG,
-               "Flags: %d, MCS: %02x / %02x / %d, Rate: %d, Channel: %d / "
-               "%04x, Antenna: %d, Payload: %db",
-               flags, mcs_known, mcs_flags, mcs, rate, chan, chan_flags,
-               antenna, payload_len);
+        if (payload_len > 100)
+            printf("%02x %02x %02x %02x\n", *(payload + 90), *(payload + 91),
+                   *(payload + 92), *(payload + 93));
+
 
         uint8_t *payload_copy = calloc(payload_len, sizeof(uint8_t));
         memcpy(payload_copy, payload, payload_len);
@@ -534,10 +533,9 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
         struct rs_channel_layer_pcap_packet pcap_packet;
         if (rs_channel_layer_pcap_packet_unpack(&pcap_packet, payload_copy,
                                                 payload_len)) {
-            /* syslog( */
-            /*     LOG_DEBUG, */
-            /*     "Received packet which could not be unpacked on channel
-             * layer"); */
+            syslog(
+                LOG_DEBUG,
+                "Received packet which could not be unpacked on channel layer");
             free(payload_copy);
             return 0;
         }
@@ -553,8 +551,7 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
         rs_packet_init(*packet, pcap_packet.super.payload_packet,
                        pcap_packet.super.payload_data,
                        pcap_packet.super.payload_data_len);
-        if(channel != pcap_packet.channel){
-
+        if (channel != pcap_packet.channel) {
         }
 
         return 1;
