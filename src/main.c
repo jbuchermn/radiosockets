@@ -35,8 +35,17 @@ int main() {
     struct rs_channel_layer_pcap layer1_pcap;
     rs_channel_layer_pcap_init(&layer1_pcap, "wlp3s0");
 
+    int data_len = 1000;
+    uint8_t* data = calloc(data_len, sizeof(uint8_t));
+    for(uint8_t* d=data; d<data+data_len; d++) *d=0xdd;
+    struct rs_packet tx_packet;
+    rs_packet_init(&tx_packet, NULL, data, data_len);
+
     while (state.running) {
         rs_command_loop_run(&command_loop, &state);
+
+        /* rs_channel_layer_transmit(&layer1_pcap.super, &tx_packet, 0x0100); */
+        /* printf("."); */
 
         rs_channel_t channel;
         struct rs_packet *packet;
@@ -46,6 +55,8 @@ int main() {
             free(packet);
         }
     }
+
+    rs_packet_destroy(&tx_packet);
 
     syslog(LOG_NOTICE, "Shutting down radiosocketd...");
 

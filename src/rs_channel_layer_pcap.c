@@ -31,12 +31,14 @@ void rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     syslog(LOG_NOTICE, "Opened PCAP interface %s", device_name);
 
     /* configure pcap */
-    if (pcap_set_snaplen(layer->pcap, 4096) != 0)
+    if (pcap_set_snaplen(layer->pcap, 65535) != 0)
         syslog(LOG_ERR, "snaplen failed");
-    if (pcap_set_promisc(layer->pcap, 1) != 0)
-        syslog(LOG_ERR, "promisc failed");
-    if (pcap_set_rfmon(layer->pcap, 1) != 0)
-        syslog(LOG_ERR, "rfmon failed");
+    if (pcap_can_set_rfmon(layer->pcap)) {
+        if (pcap_set_rfmon(layer->pcap, 1) != 0)
+            syslog(LOG_ERR, "rfmon failed");
+    } else {
+        syslog(LOG_NOTICE, "Cannot set rfmon");
+    }
     if (pcap_set_timeout(layer->pcap, -1) != 0)
         syslog(LOG_ERR, "timeout failed");
 
@@ -49,6 +51,17 @@ void rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
         pcap_close(layer->pcap);
         layer->pcap = NULL;
     }
+
+    /* activate filter */
+    /* struct bpf_program bpfprogram; */
+    /* const char* program =  */
+    /*         "ether[0x0a:4]==0x13223344 && ether[0x0e:2] == 0x5501"; */
+    /*  */
+    /*  */
+    /* pcap_compile(layer->pcap, &bpfprogram, program, 1, 0); */
+    /* pcap_setfilter(layer->pcap, &bpfprogram); */
+    /*  */
+    /* pcap_freecode(&bpfprogram); */
 }
 
 void rs_channel_layer_pcap_destroy(struct rs_channel_layer *super) {
@@ -92,6 +105,10 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
      IEEE80211_RADIOTAP_MCS_HAVE_FEC),
     0x10, 0x00};
 
+static uint8_t tx_ieee80211_header[] __attribute__((unused)) = {
+    0x08, 0x01, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x13, 0x22,
+    0x33, 0x44, 0x55, 0x66, 0x13, 0x22, 0x33, 0x44, 0x55, 0x66, 0x00, 0x00};
+
 int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
                                    struct rs_packet *packet,
                                    rs_channel_t channel) {
@@ -109,18 +126,22 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
     memcpy(tx_ptr, tx_radiotap_header, sizeof(tx_radiotap_header));
 
     // Set frequency
-    uint16_t freq = 2437;
-    tx_ptr[8] = (uint8_t)freq;
-    tx_ptr[9] = (uint8_t)(freq >> 8);
+    /* uint16_t freq = 2447; */
+    /* tx_ptr[8] = (uint8_t)freq; */
+    /* tx_ptr[9] = (uint8_t)(freq >> 8); */
 
     // Set MCS
     // https://en.wikipedia.org/wiki/IEEE_802.11n-2009#Data_rates
-    tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_BW_40;
-    tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_SGI;
-    tx_ptr[16] = 10;
+    /* tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_BW_40; */
+    /* tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_SGI; */
+    /* tx_ptr[16] = 0; */
 
     tx_ptr += sizeof(tx_radiotap_header);
     tx_len -= sizeof(tx_radiotap_header);
+
+    memcpy(tx_ptr, tx_ieee80211_header, sizeof(tx_ieee80211_header));
+    tx_ptr += sizeof(tx_ieee80211_header);
+    tx_len -= sizeof(tx_ieee80211_header);
 
     struct rs_channel_layer_pcap_packet packed_packet;
     rs_channel_layer_pcap_packet_init(&packed_packet, packet, 0, 0, channel);
@@ -214,9 +235,10 @@ int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
         struct rs_channel_layer_pcap_packet pcap_packet;
         if (rs_channel_layer_pcap_packet_unpack(&pcap_packet, payload_copy,
                                                 payload_len)) {
-            syslog(
-                LOG_DEBUG,
-                "Received packet which could not be unpacked on channel layer");
+            /* syslog( */
+            /*     LOG_DEBUG, */
+            /*     "Received packet which could not be unpacked on channel
+             * layer"); */
             free(payload_copy);
             return 0;
         }
