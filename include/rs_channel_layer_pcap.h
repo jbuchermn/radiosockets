@@ -46,11 +46,11 @@ struct rs_channel_layer_pcap_packet {
 };
 
 void rs_channel_layer_pcap_packet_init(
-    struct rs_channel_layer_pcap_packet *packet,
+    struct rs_channel_layer_pcap_packet *packet, void* payload_ownership,
     struct rs_packet *payload_packet, uint8_t *payload_data,
     int payload_data_len, rs_channel_t channel);
 int rs_channel_layer_pcap_packet_unpack(
-    struct rs_channel_layer_pcap_packet *packet, uint8_t *payload_data,
-    int payload_data_len);
+    struct rs_channel_layer_pcap_packet *packet, void* payload_ownership,
+    uint8_t *payload_data, int payload_data_len);
 
 #endif

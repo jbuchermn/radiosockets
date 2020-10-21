@@ -446,8 +446,10 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
     tx_len -= sizeof(tx_radiotap_header);
 
     struct rs_channel_layer_pcap_packet packed_packet;
-    rs_channel_layer_pcap_packet_init(&packed_packet, packet, 0, 0, channel);
+    rs_channel_layer_pcap_packet_init(&packed_packet, 0, packet, 0, 0, channel);
     rs_packet_pack(&packed_packet.super, &tx_ptr, &tx_len);
+
+    rs_packet_destroy(&packed_packet.super);
 
     if (pcap_inject(layer->pcap, tx_buf, tx_ptr - tx_buf) != tx_ptr - tx_buf) {
         syslog(LOG_ERR, "Could not inject packet");
@@ -475,13 +477,13 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             header.caplen, NULL);
 
         int flags = -1;
-        int mcs_known = -1;
-        int mcs_flags = -1;
-        int mcs = -1;
-        int rate = -1;
-        int chan = -1;
-        int chan_flags = -1;
-        int antenna = -1;
+        /* int mcs_known = -1; */
+        /* int mcs_flags = -1; */
+        /* int mcs = -1; */
+        /* int rate = -1; */
+        /* int chan = -1; */
+        /* int chan_flags = -1; */
+        /* int antenna = -1; */
 
         while (status == 0) {
             if ((status = ieee80211_radiotap_iterator_next(&it)))
@@ -491,30 +493,30 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             case IEEE80211_RADIOTAP_FLAGS:
                 flags = *(uint8_t *)(it.this_arg);
                 break;
-            case IEEE80211_RADIOTAP_MCS:
-                mcs_known = *(uint8_t *)(it.this_arg);
-                mcs_flags = *(((uint8_t *)(it.this_arg)) + 1);
-                mcs = *(((uint8_t *)(it.this_arg)) + 2);
-                break;
-            case IEEE80211_RADIOTAP_RATE:
-                rate = *(uint8_t *)(it.this_arg);
-                break;
-            case IEEE80211_RADIOTAP_CHANNEL:
-                chan = get_unaligned((uint16_t *)(it.this_arg));
-                chan_flags = get_unaligned(((uint16_t *)(it.this_arg)) + 1);
-                break;
-            case IEEE80211_RADIOTAP_ANTENNA:
-                antenna = *(uint8_t *)(it.this_arg);
-                break;
-            default:
-                break;
+            /* case IEEE80211_RADIOTAP_MCS: */
+            /*     mcs_known = *(uint8_t *)(it.this_arg); */
+            /*     mcs_flags = *(((uint8_t *)(it.this_arg)) + 1); */
+            /*     mcs = *(((uint8_t *)(it.this_arg)) + 2); */
+            /*     break; */
+            /* case IEEE80211_RADIOTAP_RATE: */
+            /*     rate = *(uint8_t *)(it.this_arg); */
+            /*     break; */
+            /* case IEEE80211_RADIOTAP_CHANNEL: */
+            /*     chan = get_unaligned((uint16_t *)(it.this_arg)); */
+            /*     chan_flags = get_unaligned(((uint16_t *)(it.this_arg)) + 1); */
+            /*     break; */
+            /* case IEEE80211_RADIOTAP_ANTENNA: */
+            /*     antenna = *(uint8_t *)(it.this_arg); */
+            /*     break; */
+            /* default: */
+            /*     break; */
             }
         }
 
-        if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) {
-            syslog(LOG_DEBUG, "Received bad FCS packet");
-            return 0;
-        }
+        /* if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) { */
+        /*     syslog(LOG_DEBUG, "Received bad FCS packet"); */
+        /*     return 0; */
+        /* } */
 
         const uint8_t *payload = radiotap_header + it._max_length;
         int payload_len = header.caplen - it._max_length;
@@ -522,16 +524,19 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             payload_len -= 4;
         }
 
-        if (payload_len > 100)
-            printf("%02x %02x %02x %02x\n", *(payload + 90), *(payload + 91),
-                   *(payload + 92), *(payload + 93));
+        // WHY?
+        payload += 4;
+        payload_len -= 4;
 
+        /* if (payload_len > 100) */
+        /*     printf("%02x %02x %02x %02x\n", *(payload + 0), *(payload + 1), */
+        /*            *(payload + 2), *(payload + 3)); */
 
         uint8_t *payload_copy = calloc(payload_len, sizeof(uint8_t));
         memcpy(payload_copy, payload, payload_len);
 
         struct rs_channel_layer_pcap_packet pcap_packet;
-        if (rs_channel_layer_pcap_packet_unpack(&pcap_packet, payload_copy,
+        if (rs_channel_layer_pcap_packet_unpack(&pcap_packet, payload_copy, payload_copy,
                                                 payload_len)) {
             syslog(
                 LOG_DEBUG,
@@ -548,10 +553,13 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
         }
 
         *packet = calloc(1, sizeof(struct rs_packet));
-        rs_packet_init(*packet, pcap_packet.super.payload_packet,
+        rs_packet_init(*packet, pcap_packet.super.payload_ownership,
+                       pcap_packet.super.payload_packet,
                        pcap_packet.super.payload_data,
                        pcap_packet.super.payload_data_len);
         if (channel != pcap_packet.channel) {
+            syslog(LOG_NOTICE, "Channel mismatch: %d != %d\n", channel,
+                   pcap_packet.channel);
         }
 
         return 1;
@@ -603,36 +611,35 @@ static void rs_channel_layer_pcap_packet_pack_header(struct rs_packet *super,
 }
 
 int rs_channel_layer_pcap_packet_unpack(
-    struct rs_channel_layer_pcap_packet *packet, uint8_t *payload_data,
-    int payload_data_len) {
+    struct rs_channel_layer_pcap_packet *packet, void* payload_ownership,
+    uint8_t *payload_data, int payload_data_len) {
 
     if (payload_data_len < 4) {
         return -1;
     }
 
     /* Initialize */
-    rs_channel_layer_pcap_packet_init(packet, NULL, payload_data,
+    rs_channel_layer_pcap_packet_init(packet, payload_ownership, NULL, payload_data,
                                       payload_data_len, 0);
-    packet->super.payload_owner = 0;
 
     /* Check header code */
-    if (*payload_data != RS_PCAP_HEADER_CODE_1) {
+    if (*packet->super.payload_data != RS_PCAP_HEADER_CODE_1) {
         return -2;
     }
-    (*packet->super.payload_data)++;
+    packet->super.payload_data++;
     packet->super.payload_data_len--;
-    if (*payload_data != RS_PCAP_HEADER_CODE_2) {
+    if (*packet->super.payload_data != RS_PCAP_HEADER_CODE_2) {
         return -2;
     }
-    (*packet->super.payload_data)++;
+    packet->super.payload_data++;
     packet->super.payload_data_len--;
 
     /* Set channel */
     uint8_t ch_base = (uint8_t)(*packet->super.payload_data);
-    (*packet->super.payload_data)++;
+    packet->super.payload_data++;
     packet->super.payload_data_len--;
     uint8_t ch = (uint8_t)(*packet->super.payload_data);
-    (*packet->super.payload_data)++;
+    packet->super.payload_data++;
     packet->super.payload_data_len--;
 
     packet->channel = ((uint16_t)ch_base << 8) + ch;
@@ -641,10 +648,10 @@ int rs_channel_layer_pcap_packet_unpack(
 }
 
 void rs_channel_layer_pcap_packet_init(
-    struct rs_channel_layer_pcap_packet *packet,
+    struct rs_channel_layer_pcap_packet *packet, void* payload_ownership,
     struct rs_packet *payload_packet, uint8_t *payload_data,
     int payload_data_len, rs_channel_t channel) {
-    rs_packet_init(&packet->super, payload_packet, payload_data,
+    rs_packet_init(&packet->super, payload_ownership, payload_packet, payload_data,
                    payload_data_len);
     packet->super.vtable = &vtable_packet;
     packet->channel = channel;

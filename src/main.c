@@ -22,7 +22,7 @@ void signal_handler(int sig_num) {
 
 int main() {
     rs_channel_t channel = 0x0101;
-    int phys = 0;
+    int phys = 1;
     char* ifname = "wlan0mon";
 
     signal(SIGINT, signal_handler);
@@ -50,7 +50,7 @@ int main() {
     for (uint8_t *d = data; d < data + data_len; d++)
         *d = 0xdd;
     struct rs_packet tx_packet;
-    rs_packet_init(&tx_packet, NULL, data, data_len);
+    rs_packet_init(&tx_packet, data, NULL, data, data_len);
 
     while (state.running) {
         rs_command_loop_run(&command_loop, &state);

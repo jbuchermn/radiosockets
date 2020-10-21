@@ -9,13 +9,14 @@
 
 static struct rs_packet_vtable vtable;
 
-void rs_packet_init(struct rs_packet *packet, struct rs_packet *payload_packet,
-                    uint8_t *payload_data, int payload_data_len) {
+void rs_packet_init(struct rs_packet *packet, void* payload_ownership,
+                    struct rs_packet *payload_packet, uint8_t *payload_data,
+                    int payload_data_len) {
+    packet->payload_ownership = payload_ownership;
     packet->payload_packet = payload_packet;
     packet->payload_data = payload_data;
     packet->payload_data_len = payload_data_len;
     packet->vtable = &vtable;
-    packet->payload_owner = payload_data != NULL;
 }
 
 void rs_packet_base_pack(struct rs_packet *packet, uint8_t **buffer,
@@ -42,7 +43,14 @@ void rs_packet_base_pack_header(struct rs_packet *packet, uint8_t **buffer,
                                 int *buffer_len) {}
 
 void rs_packet_base_destroy(struct rs_packet *packet) {
-    if(packet->payload_owner) free(packet->payload_data);
+    if (!packet->payload_ownership)
+        return;
+    if (packet->payload_data)
+        free(packet->payload_ownership);
+    if (packet->payload_packet){
+        rs_packet_destroy(packet->payload_packet);
+        free(packet->payload_packet);
+    }
 }
 
 static struct rs_packet_vtable vtable = {
