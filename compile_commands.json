@@ -1,32 +1,32 @@
 [
   {
     "directory": ".",
-    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -c src/main.c  -o src/main.o",
+    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c src/main.c  -o src/main.o",
     "file": "src/main.o"
   },
   {
     "directory": ".",
-    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -c src/rs_command_loop.c  -o src/rs_command_loop.o",
+    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c src/rs_command_loop.c  -o src/rs_command_loop.o",
     "file": "src/rs_command_loop.o"
   },
   {
     "directory": ".",
-    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -c src/rs_channel_layer.c  -o src/rs_channel_layer.o",
+    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c src/rs_channel_layer.c  -o src/rs_channel_layer.o",
     "file": "src/rs_channel_layer.o"
   },
   {
     "directory": ".",
-    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -c src/rs_channel_layer_pcap.c  -o src/rs_channel_layer_pcap.o",
+    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c src/rs_channel_layer_pcap.c  -o src/rs_channel_layer_pcap.o",
     "file": "src/rs_channel_layer_pcap.o"
   },
   {
     "directory": ".",
-    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -c src/rs_packet.c  -o src/rs_packet.o",
+    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c src/rs_packet.c  -o src/rs_packet.o",
     "file": "src/rs_packet.o"
   },
   {
     "directory": ".",
-    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -c dependencies/radiotap-library/radiotap.c  -o dependencies/radiotap-library/radiotap.o",
+    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c dependencies/radiotap-library/radiotap.c  -o dependencies/radiotap-library/radiotap.o",
     "file": "dependencies/radiotap-library/radiotap.o"
   }
 ]

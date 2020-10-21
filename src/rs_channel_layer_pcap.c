@@ -1,9 +1,18 @@
 #include <errno.h>
-#include <pcap/pcap.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
+#include <unistd.h>
+
+#include <linux/if.h>
+#include <linux/nl80211.h>
+#include <sys/ioctl.h>
+
+#include <netlink/genl/ctrl.h>
+#include <netlink/genl/family.h>
+#include <netlink/genl/genl.h>
+#include <netlink/netlink.h>
 
 #include "radiotap-library/platform.h"
 #include "radiotap-library/radiotap_iter.h"
@@ -14,42 +23,329 @@
 static struct rs_channel_layer_vtable vtable;
 static struct rs_packet_vtable vtable_packet;
 
-void rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
-                                char *device_name) {
+struct nl_command {
+    struct rs_channel_layer_pcap *root;
+
+    int cb_in_progress;
+    struct nl_msg *msg;
+
+    void *ret;
+};
+
+static int callback_finish(struct nl_msg *msg, void *arg) {
+    struct nl_command *cmd = arg;
+
+    cmd->cb_in_progress = 0;
+    return NL_OK;
+}
+
+static int nl_command_init(struct nl_command *command,
+                           struct rs_channel_layer_pcap *root, int cmd,
+                           int flags, nl_recvmsg_msg_cb_t callback) {
+    command->root = root;
+    command->ret = NULL;
+
+    nl_cb_set(root->nl_cb, NL_CB_FINISH, NL_CB_CUSTOM, callback_finish,
+              command);
+    nl_cb_set(root->nl_cb, NL_CB_ACK, NL_CB_CUSTOM, callback_finish, command);
+    nl_cb_set(root->nl_cb, NL_CB_VALID, NL_CB_CUSTOM, callback, command);
+
+    command->msg = nlmsg_alloc();
+    if (!command->msg) {
+        fprintf(stderr, "Failed to allocate netlink message.\n");
+        return -2;
+    }
+    genlmsg_put(command->msg, NL_AUTO_PORT, NL_AUTO_SEQ, root->nl_id, 0, flags,
+                cmd, 0);
+    return 0;
+}
+
+static int nl_command_run(struct nl_command *command) {
+    nl_send_auto_complete(command->root->nl_socket, command->msg);
+    command->cb_in_progress = 1;
+    while (command->cb_in_progress) {
+        nl_recvmsgs(command->root->nl_socket, command->root->nl_cb);
+    }
+    nlmsg_free(command->msg);
+
+    return 0;
+}
+
+/*
+ * Callback for NL80211_CMD_GET_WIPHY
+ */
+struct nl_cb_get_wiphy_ret {
+    int n_capable_phys;
+    uint32_t capable_phys[20];
+};
+
+static int nl_cb_get_wiphy(struct nl_msg *msg, void *arg) {
+    struct nl_command *cmd = arg;
+    struct nl_cb_get_wiphy_ret *ret = cmd->ret;
+    /* nl_msg_dump(msg, stdout); */
+
+    struct genlmsghdr *genlh = nlmsg_data(nlmsg_hdr(msg));
+    struct nlattr *tb_msg[NL80211_ATTR_MAX + 1];
+    nla_parse(tb_msg, NL80211_ATTR_MAX, genlmsg_attrdata(genlh, 0),
+              genlmsg_attrlen(genlh, 0), NULL);
+
+    if (tb_msg[NL80211_ATTR_SUPPORTED_IFTYPES]) {
+
+        int rem_mode;
+        struct nlattr *nl_mode;
+        nla_for_each_nested(nl_mode, tb_msg[NL80211_ATTR_SUPPORTED_IFTYPES],
+                            rem_mode) {
+            if (nla_type(nl_mode) == NL80211_IFTYPE_MONITOR) {
+                if (tb_msg[NL80211_ATTR_WIPHY]) {
+                    printf("%d\n", ret->n_capable_phys);
+                    ret->capable_phys[ret->n_capable_phys] =
+                        nla_get_u32(tb_msg[NL80211_ATTR_WIPHY]);
+                    ret->n_capable_phys++;
+                }
+            }
+        }
+    }
+
+    return NL_OK;
+}
+
+/*
+ * Callback for NL80211_CMD_GET_INTERFACE
+ */
+struct nl_cb_get_interface_ret {
+    int exists;
+    uint32_t other_interfaces[20];
+    int n_other_interfaces;
+};
+
+static int nl_cb_get_interface(struct nl_msg *msg, void *arg) {
+    struct nl_command *cmd = arg;
+    struct nl_cb_get_interface_ret *ret = cmd->ret;
+    /* nl_msg_dump(msg, stdout); */
+
+    struct genlmsghdr *genlh = nlmsg_data(nlmsg_hdr(msg));
+    struct nlattr *tb_msg[NL80211_ATTR_MAX + 1];
+    nla_parse(tb_msg, NL80211_ATTR_MAX, genlmsg_attrdata(genlh, 0),
+              genlmsg_attrlen(genlh, 0), NULL);
+
+    if (tb_msg[NL80211_ATTR_WIPHY]) {
+        if (cmd->root->nl_wiphy == nla_get_u32(tb_msg[NL80211_ATTR_WIPHY])) {
+            if (tb_msg[NL80211_ATTR_IFNAME]) {
+                if (!strcmp(cmd->root->nl_ifname,
+                            nla_get_string(tb_msg[NL80211_ATTR_IFNAME]))) {
+                    ret->exists = 1;
+                    if (tb_msg[NL80211_ATTR_IFINDEX]) {
+                        cmd->root->nl_if =
+                            nla_get_u32(tb_msg[NL80211_ATTR_IFINDEX]);
+                    }
+                } else {
+                    if (tb_msg[NL80211_ATTR_IFINDEX]) {
+                        ret->other_interfaces[ret->n_other_interfaces] =
+                            nla_get_u32(tb_msg[NL80211_ATTR_IFINDEX]);
+                        ret->n_other_interfaces++;
+                    }
+                }
+            }
+        }
+    }
+
+    return NL_OK;
+}
+
+/*
+ * Callback for NL80211_CMD_NEW_INTERFACE
+ */
+static int nl_cb_new_interface(struct nl_msg *msg, void *arg) {
+    struct nl_command *cmd = arg;
+    /* nl_msg_dump(msg, stdout); */
+
+    struct genlmsghdr *genlh = nlmsg_data(nlmsg_hdr(msg));
+    struct nlattr *tb_msg[NL80211_ATTR_MAX + 1];
+    nla_parse(tb_msg, NL80211_ATTR_MAX, genlmsg_attrdata(genlh, 0),
+              genlmsg_attrlen(genlh, 0), NULL);
+
+    if (tb_msg[NL80211_ATTR_IFINDEX]) {
+        cmd->root->nl_if = nla_get_u32(tb_msg[NL80211_ATTR_IFNAME]);
+    }
+    return NL_OK;
+}
+
+/*
+ * Default callback
+ */
+static int nl_cb_default(struct nl_msg *msg, void *arg) { return NL_OK; }
+
+static void nl_set_channel(struct rs_channel_layer_pcap* layer, uint16_t channel){
+    if(channel == layer->on_channel) return;
+
+    struct nl_command cmd;
+    nl_command_init(&cmd, layer, NL80211_CMD_SET_WIPHY, 0,
+                    nl_cb_default);
+    nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY, layer->nl_wiphy);
+
+    nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_FREQ, 2412 + 5*channel);
+    nla_put_u32(cmd.msg, NL80211_ATTR_CHANNEL_WIDTH, NL80211_CHAN_WIDTH_20_NOHT);
+
+    nl_command_run(&cmd);
+}
+
+int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
+                               char *ifname) {
     layer->super.vtable = &vtable;
+    layer->pcap = NULL;
+
+    /* initialize nl80211 */
+    layer->nl_socket = nl_socket_alloc();
+    if (!layer->nl_socket) {
+        syslog(LOG_ERR, "Failed to allocate netlink socket");
+        return -1;
+    }
+
+    nl_socket_set_buffer_size(layer->nl_socket, 8192, 8192);
+
+    if (genl_connect(layer->nl_socket)) {
+        syslog(LOG_ERR, "Failed to connect to netlink socket");
+        nl_close(layer->nl_socket);
+        nl_socket_free(layer->nl_socket);
+        return -1;
+    }
+
+    layer->nl_id = genl_ctrl_resolve(layer->nl_socket, "nl80211");
+    if (layer->nl_id < 0) {
+        syslog(LOG_ERR, "nl80211 interface not found");
+        nl_close(layer->nl_socket);
+        nl_socket_free(layer->nl_socket);
+        return -1;
+    }
+
+    layer->nl_cb = nl_cb_alloc(NL_CB_DEFAULT);
+    if (!layer->nl_cb) {
+        syslog(LOG_ERR, "Failed to allocate netlink callback");
+        nl_close(layer->nl_socket);
+        nl_socket_free(layer->nl_socket);
+        return -1;
+    }
+
+    nl_cb_err(layer->nl_cb, NL_CB_VERBOSE, NULL, stderr);
+
+    /* look for monitor-capable devices and store in nl_wiphy, nl_ifname */
+    struct nl_command cmd;
+    struct nl_cb_get_wiphy_ret ret = {0};
+    nl_command_init(&cmd, layer, NL80211_CMD_GET_WIPHY, NLM_F_DUMP,
+                    nl_cb_get_wiphy);
+    cmd.ret = &ret;
+    nl_command_run(&cmd);
+
+    if (ret.n_capable_phys == 0) {
+        syslog(LOG_ERR, "No monitor-capable devices available");
+        rs_channel_layer_destroy(&layer->super);
+        return -2;
+    } else if (ret.n_capable_phys == 1) {
+        layer->nl_wiphy = ret.capable_phys[0];
+    } else {
+        if (phys == -1) {
+            layer->nl_wiphy = ret.capable_phys[0];
+        } else {
+            int is_ok = 0;
+            for (int i = 0; i < ret.n_capable_phys; i++) {
+                if (ret.capable_phys[i] == phys) {
+                    is_ok = 1;
+                    break;
+                }
+            }
+            if (!is_ok) {
+                syslog(LOG_ERR, "phys#%d does not exist", phys);
+                rs_channel_layer_destroy(&layer->super);
+                return -2;
+            }
+            layer->nl_wiphy = phys;
+        }
+    }
+    strcpy(layer->nl_ifname, ifname);
+
+    /* see if interface exists already */
+    nl_command_init(&cmd, layer, NL80211_CMD_GET_INTERFACE, NLM_F_DUMP,
+                    nl_cb_get_interface);
+
+    struct nl_cb_get_interface_ret ret1 = {0};
+    cmd.ret = &ret1;
+    nl_command_run(&cmd);
+    if (!ret1.exists) {
+        syslog(LOG_NOTICE,
+               "Interface '%s' does not yet exist, creating it...\n",
+               layer->nl_ifname);
+
+        /* create monitor interface */
+        nl_command_init(&cmd, layer, NL80211_CMD_NEW_INTERFACE, 0,
+                        nl_cb_new_interface);
+        nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY, layer->nl_wiphy);
+        nla_put_string(cmd.msg, NL80211_ATTR_IFNAME, layer->nl_ifname);
+        nla_put_u32(cmd.msg, NL80211_ATTR_IFTYPE, NL80211_IFTYPE_MONITOR);
+        nl_command_run(&cmd);
+
+        syslog(LOG_NOTICE, "...done\n");
+    } else {
+        syslog(LOG_NOTICE,
+               "Interface '%s' exists, putting it in monitor mode...",
+               layer->nl_ifname);
+
+        /* put it in monitor interface */
+        nl_command_init(&cmd, layer, NL80211_CMD_SET_INTERFACE, 0,
+                        nl_cb_default);
+        nla_put_u32(cmd.msg, NL80211_ATTR_IFINDEX, layer->nl_if);
+        nla_put_u32(cmd.msg, NL80211_ATTR_IFTYPE, NL80211_IFTYPE_MONITOR);
+        nl_command_run(&cmd);
+        syslog(LOG_NOTICE, "...done\n");
+    }
+
+    /* try and remove other interfaces */
+    for (int i = 0; i < ret1.n_other_interfaces; i++) {
+        printf("Deleting unused interface %d...\n", ret1.other_interfaces[i]);
+
+        nl_command_init(&cmd, layer, NL80211_CMD_DEL_INTERFACE, 0,
+                        nl_cb_default);
+        nla_put_u32(cmd.msg, NL80211_ATTR_IFINDEX, ret1.other_interfaces[i]);
+        nl_command_run(&cmd);
+        printf("...done\n");
+    }
+
+    /* ip link set ifname up */
+    struct ifreq ifr;
+    int fd;
+
+    strncpy(ifr.ifr_name, layer->nl_ifname, IFNAMSIZ);
+    fd = socket(PF_PACKET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        syslog(LOG_ERR, "Could not open up socket");
+        return -1;
+    }
+
+    if (ioctl(fd, SIOCGIFFLAGS, &ifr)) {
+        syslog(LOG_ERR, "SIOCGIFFLAGS");
+        close(fd);
+        return -1;
+    }
+    ifr.ifr_flags |= IFF_UP;
+    if (ioctl(fd, SIOCSIFFLAGS, &ifr)) {
+        syslog(LOG_ERR, "SIOCGIFFLAGS");
+        close(fd);
+        return -1;
+    }
+    close(fd);
 
     /* initialize pcap */
-    int err;
     char errbuf[PCAP_ERRBUF_SIZE];
+    layer->pcap = pcap_create(layer->nl_ifname, errbuf);
+    pcap_set_snaplen(layer->pcap, -1);
+    pcap_set_timeout(layer->pcap, -1);
 
-    layer->pcap = pcap_create(device_name, errbuf);
-    if (layer->pcap == NULL) {
-        syslog(LOG_ERR, "Unable to open PCAP interface %s: %s", device_name,
-               errbuf);
-        return;
-    }
-    syslog(LOG_NOTICE, "Opened PCAP interface %s", device_name);
-
-    /* configure pcap */
-    if (pcap_set_snaplen(layer->pcap, 65535) != 0)
-        syslog(LOG_ERR, "snaplen failed");
-    if (pcap_can_set_rfmon(layer->pcap)) {
-        if (pcap_set_rfmon(layer->pcap, 1) != 0)
-            syslog(LOG_ERR, "rfmon failed");
-    } else {
-        syslog(LOG_NOTICE, "Cannot set rfmon");
-    }
-    if (pcap_set_timeout(layer->pcap, -1) != 0)
-        syslog(LOG_ERR, "timeout failed");
-
-    /* activate pcap */
+    int err;
     if ((err = pcap_activate(layer->pcap)) != 0) {
-        syslog(LOG_ERR, "activate failed: %d", err);
-        layer->pcap = NULL;
+        syslog(LOG_ERR, "PCAP activate failed: %d\n", err);
+        return -1;
     } else if (pcap_setnonblock(layer->pcap, 1, errbuf) != 0) {
-        syslog(LOG_ERR, "setnonblock failed: %s", errbuf);
-        pcap_close(layer->pcap);
-        layer->pcap = NULL;
+        syslog(LOG_ERR, "PCAP setnonblock failed: %s\n", errbuf);
+        return -1;
     }
 
     /* activate filter */
@@ -62,13 +358,22 @@ void rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     /* pcap_setfilter(layer->pcap, &bpfprogram); */
     /*  */
     /* pcap_freecode(&bpfprogram); */
+
+    /* set initial channel */
+    layer->on_channel = 0;
+    nl_set_channel(layer, 0x06);
+
+    return 0;
 }
 
 void rs_channel_layer_pcap_destroy(struct rs_channel_layer *super) {
     struct rs_channel_layer_pcap *layer = rs_cast(rs_channel_layer_pcap, super);
-    if (layer->pcap)
-        pcap_close(layer->pcap);
+    if(layer->pcap) pcap_close(layer->pcap);
+    nl_cb_put(layer->nl_cb);
+    nl_close(layer->nl_socket);
+    nl_socket_free(layer->nl_socket);
 }
+
 
 static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
     0x00, // it_version
@@ -105,10 +410,6 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
      IEEE80211_RADIOTAP_MCS_HAVE_FEC),
     0x10, 0x00};
 
-static uint8_t tx_ieee80211_header[] __attribute__((unused)) = {
-    0x08, 0x01, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x13, 0x22,
-    0x33, 0x44, 0x55, 0x66, 0x13, 0x22, 0x33, 0x44, 0x55, 0x66, 0x00, 0x00};
-
 int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
                                    struct rs_packet *packet,
                                    rs_channel_t channel) {
@@ -118,6 +419,7 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
         syslog(LOG_ERR, "Attempting to send packet through wrong channel");
         return 0;
     }
+    nl_set_channel(layer, 0x00FF & channel);
 
     uint8_t tx_buf[RS_PCAP_TX_BUFSIZE];
     uint8_t *tx_ptr = tx_buf;
@@ -139,10 +441,6 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
     tx_ptr += sizeof(tx_radiotap_header);
     tx_len -= sizeof(tx_radiotap_header);
 
-    memcpy(tx_ptr, tx_ieee80211_header, sizeof(tx_ieee80211_header));
-    tx_ptr += sizeof(tx_ieee80211_header);
-    tx_len -= sizeof(tx_ieee80211_header);
-
     struct rs_channel_layer_pcap_packet packed_packet;
     rs_channel_layer_pcap_packet_init(&packed_packet, packet, 0, 0, channel);
     rs_packet_pack(&packed_packet.super, &tx_ptr, &tx_len);
@@ -154,13 +452,14 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
     return 0;
 }
 
-int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
-                                  struct rs_packet **packet,
-                                  rs_channel_t *channel) {
+static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
+                                         struct rs_packet **packet,
+                                         rs_channel_t channel) {
     struct rs_channel_layer_pcap *layer = rs_cast(rs_channel_layer_pcap, super);
     if (layer->pcap == NULL) {
         return 0;
     }
+    nl_set_channel(layer, 0x00FF & channel);
 
     struct pcap_pkthdr header;
     const uint8_t *radiotap_header = pcap_next(layer->pcap, &header);
@@ -254,7 +553,9 @@ int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
         rs_packet_init(*packet, pcap_packet.super.payload_packet,
                        pcap_packet.super.payload_data,
                        pcap_packet.super.payload_data_len);
-        *channel = pcap_packet.channel;
+        if(channel != pcap_packet.channel){
+
+        }
 
         return 1;
     }
@@ -266,17 +567,14 @@ uint8_t rs_channel_layer_pcap_ch_base(struct rs_channel_layer *super) {
     return 0x01;
 }
 
-int rs_channel_layer_pcap_ch_n1(struct rs_channel_layer *super) { return 2; }
-
-int rs_channel_layer_pcap_ch_n2(struct rs_channel_layer *super) { return 10; }
+int rs_channel_layer_pcap_ch_n(struct rs_channel_layer *super) { return 12; }
 
 static struct rs_channel_layer_vtable vtable = {
     .destroy = rs_channel_layer_pcap_destroy,
     .transmit = rs_channel_layer_pcap_transmit,
     .receive = rs_channel_layer_pcap_receive,
     .ch_base = rs_channel_layer_pcap_ch_base,
-    .ch_n1 = rs_channel_layer_pcap_ch_n1,
-    .ch_n2 = rs_channel_layer_pcap_ch_n2,
+    .ch_n = rs_channel_layer_pcap_ch_n,
 };
 
 static void rs_channel_layer_pcap_packet_pack_header(struct rs_packet *super,

@@ -11,6 +11,8 @@
 #include "rs_packet.h"
 #include "rs_server_state.h"
 
+/* #define _SEND_ */
+
 static struct rs_server_state state;
 
 void signal_handler(int sig_num) {
@@ -19,6 +21,10 @@ void signal_handler(int sig_num) {
 }
 
 int main() {
+    rs_channel_t channel = 0x0101;
+    int phys = 0;
+    char* ifname = "wlan0mon";
+
     signal(SIGINT, signal_handler);
 
     setlogmask(LOG_UPTO(LOG_DEBUG));
@@ -33,30 +39,39 @@ int main() {
     rs_command_loop_init(&command_loop, 512);
 
     struct rs_channel_layer_pcap layer1_pcap;
-    rs_channel_layer_pcap_init(&layer1_pcap, "wlp3s0");
+    if (rs_channel_layer_pcap_init(&layer1_pcap, phys, ifname)) {
+        return 0;
+    }
 
+
+#ifdef _SEND_
     int data_len = 1000;
-    uint8_t* data = calloc(data_len, sizeof(uint8_t));
-    for(uint8_t* d=data; d<data+data_len; d++) *d=0xdd;
+    uint8_t *data = calloc(data_len, sizeof(uint8_t));
+    for (uint8_t *d = data; d < data + data_len; d++)
+        *d = 0xdd;
     struct rs_packet tx_packet;
     rs_packet_init(&tx_packet, NULL, data, data_len);
 
     while (state.running) {
         rs_command_loop_run(&command_loop, &state);
 
-        /* rs_channel_layer_transmit(&layer1_pcap.super, &tx_packet, 0x0100); */
-        /* printf("."); */
+        rs_channel_layer_transmit(&layer1_pcap.super, &tx_packet, channel);
+        printf("T");
+    }
 
-        rs_channel_t channel;
+    rs_packet_destroy(&tx_packet);
+#else
+    while (state.running) {
+        rs_command_loop_run(&command_loop, &state);
+
         struct rs_packet *packet;
-        if (rs_channel_layer_receive(&layer1_pcap.super, &packet, &channel)) {
-            rs_channel_layer_transmit(&layer1_pcap.super, packet, channel);
+        if (rs_channel_layer_receive(&layer1_pcap.super, &packet, channel)) {
+            printf("R\n");
             rs_packet_destroy(packet);
             free(packet);
         }
     }
-
-    rs_packet_destroy(&tx_packet);
+#endif
 
     syslog(LOG_NOTICE, "Shutting down radiosocketd...");
 
