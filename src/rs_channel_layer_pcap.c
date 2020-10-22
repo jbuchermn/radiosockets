@@ -16,13 +16,16 @@
 
 #include "radiotap-library/platform.h"
 #include "radiotap-library/radiotap_iter.h"
+
 #include "rs_channel_layer_pcap.h"
+#include "rs_channel_layer_pcap_packet.h"
 #include "rs_packet.h"
 #include "rs_util.h"
 
-static struct rs_channel_layer_vtable vtable;
-static struct rs_packet_vtable vtable_packet;
-
+/*
+ ************************************************************************
+ * nl80211 code
+ */
 struct nl_command {
     struct rs_channel_layer_pcap *root;
 
@@ -71,9 +74,7 @@ static int nl_command_run(struct nl_command *command) {
     return 0;
 }
 
-/*
- * Callback for NL80211_CMD_GET_WIPHY
- */
+/* Callback for NL80211_CMD_GET_WIPHY */
 struct nl_cb_get_wiphy_ret {
     int n_capable_phys;
     uint32_t capable_phys[20];
@@ -108,9 +109,7 @@ static int nl_cb_get_wiphy(struct nl_msg *msg, void *arg) {
     return NL_OK;
 }
 
-/*
- * Callback for NL80211_CMD_GET_INTERFACE
- */
+/* Callback for NL80211_CMD_GET_INTERFACE */
 struct nl_cb_get_interface_ret {
     int exists;
     uint32_t other_interfaces[20];
@@ -151,9 +150,7 @@ static int nl_cb_get_interface(struct nl_msg *msg, void *arg) {
     return NL_OK;
 }
 
-/*
- * Callback for NL80211_CMD_NEW_INTERFACE
- */
+/* Callback for NL80211_CMD_NEW_INTERFACE */
 static int nl_cb_new_interface(struct nl_msg *msg, void *arg) {
     struct nl_command *cmd = arg;
     /* nl_msg_dump(msg, stdout); */
@@ -169,9 +166,7 @@ static int nl_cb_new_interface(struct nl_msg *msg, void *arg) {
     return NL_OK;
 }
 
-/*
- * Default callback
- */
+/* Default callback */
 static int nl_cb_default(struct nl_msg *msg, void *arg) { return NL_OK; }
 
 static void nl_set_channel(struct rs_channel_layer_pcap *layer,
@@ -191,6 +186,12 @@ static void nl_set_channel(struct rs_channel_layer_pcap *layer,
 
     layer->on_channel = channel;
 }
+
+/*
+ ************************************************************************
+ * setup/shutdown code
+ */
+static struct rs_channel_layer_vtable vtable;
 
 int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
                                char *ifname) {
@@ -352,17 +353,6 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
         return -1;
     }
 
-    /* activate filter */
-    /* struct bpf_program bpfprogram; */
-    /* const char* program =  */
-    /*         "ether[0x0a:4]==0x13223344 && ether[0x0e:2] == 0x5501"; */
-    /*  */
-    /*  */
-    /* pcap_compile(layer->pcap, &bpfprogram, program, 1, 0); */
-    /* pcap_setfilter(layer->pcap, &bpfprogram); */
-    /*  */
-    /* pcap_freecode(&bpfprogram); */
-
     /* set initial channel */
     layer->on_channel = 0;
     nl_set_channel(layer, 0x06);
@@ -379,6 +369,11 @@ void rs_channel_layer_pcap_destroy(struct rs_channel_layer *super) {
     nl_socket_free(layer->nl_socket);
 }
 
+
+/*
+ ************************************************************************
+ * tx/rx code
+ */
 static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
     0x00, // it_version
     0x00, // it_pad
@@ -421,7 +416,7 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
 
     if (!rs_channel_layer_owns_channel(super, channel)) {
         syslog(LOG_ERR, "Attempting to send packet through wrong channel");
-        return 0;
+        return -1;
     }
     nl_set_channel(layer, 0x00FF & channel);
 
@@ -431,6 +426,7 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
 
     memcpy(tx_ptr, tx_radiotap_header, sizeof(tx_radiotap_header));
 
+    // TODO: Probably doesn't make a difference setting any of these */
     // Set frequency
     /* uint16_t freq = 2447; */
     /* tx_ptr[8] = (uint8_t)freq; */
@@ -445,14 +441,14 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
     tx_ptr += sizeof(tx_radiotap_header);
     tx_len -= sizeof(tx_radiotap_header);
 
-    struct rs_channel_layer_pcap_packet packed_packet;
-    rs_channel_layer_pcap_packet_init(&packed_packet, 0, packet, 0, 0, channel);
-    rs_packet_pack(&packed_packet.super, &tx_ptr, &tx_len);
-
-    rs_packet_destroy(&packed_packet.super);
+    struct rs_channel_layer_pcap_packet tmp_packet;
+    rs_channel_layer_pcap_packet_init(&tmp_packet, NULL, packet, NULL, 0, channel);
+    rs_packet_pack(&tmp_packet.super, &tx_ptr, &tx_len);
+    rs_packet_destroy(&tmp_packet.super);
 
     if (pcap_inject(layer->pcap, tx_buf, tx_ptr - tx_buf) != tx_ptr - tx_buf) {
         syslog(LOG_ERR, "Could not inject packet");
+        return -1;
     }
 
     return 0;
@@ -460,12 +456,14 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
 
 static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
                                          struct rs_packet **packet,
-                                         rs_channel_t channel) {
+                                         rs_channel_t* channel) {
     struct rs_channel_layer_pcap *layer = rs_cast(rs_channel_layer_pcap, super);
     if (layer->pcap == NULL) {
-        return 0;
+        return -1;
     }
-    nl_set_channel(layer, 0x00FF & channel);
+    if(*channel){
+        nl_set_channel(layer, 0x00FF & *channel);
+    }
 
     struct pcap_pkthdr header;
     const uint8_t *radiotap_header = pcap_next(layer->pcap, &header);
@@ -513,10 +511,10 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             }
         }
 
-        /* if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) { */
-        /*     syslog(LOG_DEBUG, "Received bad FCS packet"); */
-        /*     return 0; */
-        /* } */
+        if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) {
+            syslog(LOG_DEBUG, "Received bad FCS packet");
+            return RS_CHANNEL_LAYER_BADFCS;
+        }
 
         const uint8_t *payload = radiotap_header + it._max_length;
         int payload_len = header.caplen - it._max_length;
@@ -524,13 +522,11 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             payload_len -= 4;
         }
 
-        // WHY?
+        /*
+         * TODO: WHY?
+         */
         payload += 4;
         payload_len -= 4;
-
-        /* if (payload_len > 100) */
-        /*     printf("%02x %02x %02x %02x\n", *(payload + 0), *(payload + 1), */
-        /*            *(payload + 2), *(payload + 3)); */
 
         uint8_t *payload_copy = calloc(payload_len, sizeof(uint8_t));
         memcpy(payload_copy, payload, payload_len);
@@ -538,18 +534,18 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
         struct rs_channel_layer_pcap_packet pcap_packet;
         if (rs_channel_layer_pcap_packet_unpack(&pcap_packet, payload_copy, payload_copy,
                                                 payload_len)) {
-            syslog(
-                LOG_DEBUG,
-                "Received packet which could not be unpacked on channel layer");
+            /* syslog( */
+            /*     LOG_DEBUG, */
+            /*     "Received packet which could not be unpacked on channel layer"); */
             free(payload_copy);
-            return 0;
+            return RS_CHANNEL_LAYER_IRR;
         }
 
         if (!rs_channel_layer_owns_channel(&layer->super,
                                            pcap_packet.channel)) {
             syslog(LOG_DEBUG, "Received packet on channel without ownership");
             free(payload_copy);
-            return 0;
+            return RS_CHANNEL_LAYER_IRR;
         }
 
         *packet = calloc(1, sizeof(struct rs_packet));
@@ -557,15 +553,12 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
                        pcap_packet.super.payload_packet,
                        pcap_packet.super.payload_data,
                        pcap_packet.super.payload_data_len);
-        if (channel != pcap_packet.channel) {
-            syslog(LOG_NOTICE, "Channel mismatch: %d != %d\n", channel,
-                   pcap_packet.channel);
-        }
+        *channel = pcap_packet.channel;
 
-        return 1;
+        return 0;
     }
 
-    return 0;
+    return RS_CHANNEL_LAYER_EOF;
 }
 
 uint8_t rs_channel_layer_pcap_ch_base(struct rs_channel_layer *super) {
@@ -582,82 +575,3 @@ static struct rs_channel_layer_vtable vtable = {
     .ch_n = rs_channel_layer_pcap_ch_n,
 };
 
-static void rs_channel_layer_pcap_packet_pack_header(struct rs_packet *super,
-                                                     uint8_t **buffer,
-                                                     int *buffer_len) {
-    struct rs_channel_layer_pcap_packet *packet =
-        rs_cast(rs_channel_layer_pcap_packet, super);
-    if (*buffer_len < 4) {
-        syslog(LOG_ERR, "pack: buffer too short");
-        return;
-    }
-
-    /* header code */
-    (**buffer) = RS_PCAP_HEADER_CODE_1;
-    (*buffer)++;
-    (*buffer_len)--;
-    (**buffer) = RS_PCAP_HEADER_CODE_2;
-    (*buffer)++;
-    (*buffer_len)--;
-
-    /* channel */
-    (**buffer) = (uint8_t)(packet->channel >> 8);
-    (*buffer)++;
-    (*buffer_len)--;
-
-    (**buffer) = (uint8_t)(packet->channel % 256);
-    (*buffer)++;
-    (*buffer_len)--;
-}
-
-int rs_channel_layer_pcap_packet_unpack(
-    struct rs_channel_layer_pcap_packet *packet, void* payload_ownership,
-    uint8_t *payload_data, int payload_data_len) {
-
-    if (payload_data_len < 4) {
-        return -1;
-    }
-
-    /* Initialize */
-    rs_channel_layer_pcap_packet_init(packet, payload_ownership, NULL, payload_data,
-                                      payload_data_len, 0);
-
-    /* Check header code */
-    if (*packet->super.payload_data != RS_PCAP_HEADER_CODE_1) {
-        return -2;
-    }
-    packet->super.payload_data++;
-    packet->super.payload_data_len--;
-    if (*packet->super.payload_data != RS_PCAP_HEADER_CODE_2) {
-        return -2;
-    }
-    packet->super.payload_data++;
-    packet->super.payload_data_len--;
-
-    /* Set channel */
-    uint8_t ch_base = (uint8_t)(*packet->super.payload_data);
-    packet->super.payload_data++;
-    packet->super.payload_data_len--;
-    uint8_t ch = (uint8_t)(*packet->super.payload_data);
-    packet->super.payload_data++;
-    packet->super.payload_data_len--;
-
-    packet->channel = ((uint16_t)ch_base << 8) + ch;
-
-    return 0;
-}
-
-void rs_channel_layer_pcap_packet_init(
-    struct rs_channel_layer_pcap_packet *packet, void* payload_ownership,
-    struct rs_packet *payload_packet, uint8_t *payload_data,
-    int payload_data_len, rs_channel_t channel) {
-    rs_packet_init(&packet->super, payload_ownership, payload_packet, payload_data,
-                   payload_data_len);
-    packet->super.vtable = &vtable_packet;
-    packet->channel = channel;
-}
-
-static struct rs_packet_vtable vtable_packet = {
-    .destroy = &rs_packet_base_destroy,
-    .pack = &rs_packet_base_pack,
-    .pack_header = &rs_channel_layer_pcap_packet_pack_header};

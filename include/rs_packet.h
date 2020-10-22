@@ -7,7 +7,7 @@ struct rs_packet_vtable;
 
 struct rs_packet {
     /*
-     * Either payload_packet or payload_data and payload_data_len must be set
+     * Either payload_packet or payload_data and payload_data_len can be set
      * (not both)
      *
      * nonnull payload_ownership indicates that memory will be freed on destroy

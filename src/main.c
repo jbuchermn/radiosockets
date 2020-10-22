@@ -7,11 +7,10 @@
 #include <unistd.h>
 
 #include "rs_channel_layer_pcap.h"
+#include "rs_port_layer.h"
 #include "rs_command_loop.h"
 #include "rs_packet.h"
 #include "rs_server_state.h"
-
-/* #define _SEND_ */
 
 static struct rs_server_state state;
 
@@ -21,62 +20,54 @@ void signal_handler(int sig_num) {
 }
 
 int main() {
-    rs_channel_t channel = 0x0101;
     int phys = 1;
-    char* ifname = "wlan0mon";
-
-    signal(SIGINT, signal_handler);
+    char* ifname = "wlan1mon";
 
     setlogmask(LOG_UPTO(LOG_DEBUG));
+    /* setlogmask(LOG_UPTO(LOG_NOTICE)); */
+
     openlog("radiosocketd", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
+
     syslog(LOG_NOTICE, "Starting radiosocketd...");
 
-    state.running = 1;
-
+    /* command loop */
     struct rs_command_loop command_loop;
     state.command_loop = &command_loop;
 
     rs_command_loop_init(&command_loop, 512);
 
+    /* channel layers */
     struct rs_channel_layer_pcap layer1_pcap;
     if (rs_channel_layer_pcap_init(&layer1_pcap, phys, ifname)) {
         return 0;
     }
 
+    struct rs_channel_layer* layer1s[1] = { &layer1_pcap.super };
 
-#ifdef _SEND_
-    int data_len = 1000;
-    uint8_t *data = calloc(data_len, sizeof(uint8_t));
-    for (uint8_t *d = data; d < data + data_len; d++)
-        *d = 0xdd;
-    struct rs_packet tx_packet;
-    rs_packet_init(&tx_packet, data, NULL, data, data_len);
+    /* port layer */
+    struct rs_port_layer layer2;
+    rs_port_layer_init(&layer2, layer1s, 1, 0x1000);
 
+    /* main loop */
+    state.running = 1;
+    signal(SIGINT, signal_handler);
     while (state.running) {
         rs_command_loop_run(&command_loop, &state);
 
-        rs_channel_layer_transmit(&layer1_pcap.super, &tx_packet, channel);
-        printf("T");
-    }
-
-    rs_packet_destroy(&tx_packet);
-#else
-    while (state.running) {
-        rs_command_loop_run(&command_loop, &state);
-
-        struct rs_packet *packet;
-        if (rs_channel_layer_receive(&layer1_pcap.super, &packet, channel)) {
-            printf("R\n");
-            rs_packet_destroy(packet);
-            free(packet);
+        struct rs_packet* packet;
+        rs_port_id_t port;
+        while(!rs_port_layer_receive(&layer2, &packet, &port)){
+            printf("R");
         }
+        rs_port_layer_main(&layer2, NULL);
     }
-#endif
 
+    /* shutdown */
     syslog(LOG_NOTICE, "Shutting down radiosocketd...");
 
     rs_command_loop_destroy(&command_loop);
     rs_channel_layer_destroy(&layer1_pcap.super);
+    rs_port_layer_destroy(&layer2);
 
     syslog(LOG_NOTICE, "...done");
     closelog();

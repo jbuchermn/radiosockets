@@ -34,9 +34,7 @@ void rs_packet_base_pack(struct rs_packet *packet, uint8_t **buffer,
         memcpy(*buffer, packet->payload_data, len);
         (*buffer) += len;
         (*buffer_len) -= len;
-    } else {
-        syslog(LOG_ERR, "pack: invalid packet");
-    }
+    } 
 }
 
 void rs_packet_base_pack_header(struct rs_packet *packet, uint8_t **buffer,

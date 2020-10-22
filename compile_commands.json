@@ -21,6 +21,21 @@
   },
   {
     "directory": ".",
+    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c src/rs_channel_layer_pcap_packet.c  -o src/rs_channel_layer_pcap_packet.o",
+    "file": "src/rs_channel_layer_pcap_packet.o"
+  },
+  {
+    "directory": ".",
+    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c src/rs_port_layer.c  -o src/rs_port_layer.o",
+    "file": "src/rs_port_layer.o"
+  },
+  {
+    "directory": ".",
+    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c src/rs_port_layer_packet.c  -o src/rs_port_layer_packet.o",
+    "file": "src/rs_port_layer_packet.o"
+  },
+  {
+    "directory": ".",
     "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c src/rs_packet.c  -o src/rs_packet.o",
     "file": "src/rs_packet.o"
   },
