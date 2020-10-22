@@ -20,7 +20,7 @@ void signal_handler(int sig_num) {
 }
 
 int main() {
-    int phys = 1;
+    int phys = 2;
     char* ifname = "wlan1mon";
 
     setlogmask(LOG_UPTO(LOG_DEBUG));
@@ -46,7 +46,7 @@ int main() {
 
     /* port layer */
     struct rs_port_layer layer2;
-    rs_port_layer_init(&layer2, layer1s, 1, 0x1000);
+    rs_port_layer_init(&layer2, layer1s, 1, 0x1006);
 
     /* main loop */
     state.running = 1;

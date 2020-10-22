@@ -233,8 +233,11 @@ void rs_port_layer_main(struct rs_port_layer *layer,
         clock_gettime(CLOCK_REALTIME, &now);
         long msec = msec_diff(now, info->tx_last_ts);
         if (msec >= RS_PORT_CHANNEL_INFO_HEARTBEAT_MSEC) {
+            uint8_t* dummy = calloc(1024, sizeof(uint8_t));
+            memset(dummy, 0xDD, 1024);
+
             struct rs_port_layer_packet packet;
-            rs_port_layer_packet_init(&packet, NULL, NULL, NULL, 0);
+            rs_port_layer_packet_init(&packet, dummy, NULL, dummy, 1024);
             packet.command[0] = RS_PORT_CMD_HEARTBEAT;
             packet.seq = info->tx_last_seq + 1;
 
@@ -248,6 +251,8 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                  * TODO: register stats
                  */
             }
+
+            rs_packet_destroy(&packet.super);
         }
     }
 }

@@ -457,6 +457,7 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
 static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
                                          struct rs_packet **packet,
                                          rs_channel_t* channel) {
+
     struct rs_channel_layer_pcap *layer = rs_cast(rs_channel_layer_pcap, super);
     if (layer->pcap == NULL) {
         return -1;
@@ -540,6 +541,7 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             free(payload_copy);
             return RS_CHANNEL_LAYER_IRR;
         }
+        syslog(LOG_DEBUG, "Unpacked a packet");
 
         if (!rs_channel_layer_owns_channel(&layer->super,
                                            pcap_packet.channel)) {
