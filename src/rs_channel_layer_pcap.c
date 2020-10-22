@@ -408,7 +408,14 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
     (IEEE80211_RADIOTAP_MCS_HAVE_MCS | IEEE80211_RADIOTAP_MCS_HAVE_BW |
      IEEE80211_RADIOTAP_MCS_HAVE_GI | IEEE80211_RADIOTAP_MCS_HAVE_STBC |
      IEEE80211_RADIOTAP_MCS_HAVE_FEC),
-    0x10, 0x00};
+    0x10, 0x00,
+
+    // IEEE802.11 header
+    0x40, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00,
+    // RATES
+    0x01, 0x04, 0x02, 0x04, 0x0B, 0x16, 0x32, 0x08, 0x0C, 0x12, 0x18, 0x24, 0x30, 0x48, 0x60, 0x6C
+};
 
 int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
                                    struct rs_packet *packet,
@@ -540,7 +547,7 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
                                                 payload_copy, payload_len)) {
             syslog(
                 LOG_DEBUG,
-                "Received packet which could not be unpacked on channel layer");
+                "Received packet which could not be unpacked on channel layer (%db)", payload_len);
             free(payload_copy);
             return RS_CHANNEL_LAYER_IRR;
         }
