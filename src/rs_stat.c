@@ -88,8 +88,6 @@ void rs_stat_flush(struct rs_stat *stat) {
 
     stat->t0.tv_sec = t0_msec / 1000L;
     stat->t0.tv_nsec = (t0_msec % 1000L) * 1000000L;
-
-    rs_stat_printf(stat);
 }
 
 void rs_stat_printf(struct rs_stat *stat) {
@@ -101,7 +99,7 @@ void rs_stat_printf(struct rs_stat *stat) {
     int idx = millis / RS_STAT_DT_MSEC;
 
     printf("STAT[%10s]: ", stat->title);
-    for (int i = 0; i < RS_STAT_N; i++) {
+    for (int i = 0; i < RS_STAT_N - idx; i++) {
         printf("%.2e%5s   ", stat->last_data[i], stat->unit);
     }
     for (int i = 0; i < idx; i++) {

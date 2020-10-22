@@ -291,6 +291,15 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                       info);
 
             rs_packet_destroy(&packet.super);
+
+            /* Temporary: Print out statistics */
+            printf("\033[2J\n");
+            rs_stat_printf(&info->tx_stat_bytes);
+            rs_stat_printf(&info->tx_stat_packets);
+            rs_stat_printf(&info->rx_stat_bytes);
+            rs_stat_printf(&info->rx_stat_packets);
+            rs_stat_printf(&info->rx_stat_dt);
+            rs_stat_printf(&info->rx_stat_missed_packets);
         }
     }
 }
