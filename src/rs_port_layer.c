@@ -123,8 +123,8 @@ static int _transmit(struct rs_port_layer *layer, struct rs_packet *packet,
         info->tx_last_seq++;
         clock_gettime(CLOCK_REALTIME, &info->tx_last_ts);
 
-        rs_stat_register(&info->rx_stat_packets, 1.0);
-        rs_stat_register(&info->rx_stat_bytes, bytes);
+        rs_stat_register(&info->tx_stat_packets, 1.0);
+        rs_stat_register(&info->tx_stat_bytes, bytes);
         return bytes;
     }
 
