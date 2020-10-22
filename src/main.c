@@ -21,7 +21,7 @@ void signal_handler(int sig_num) {
 
 int main() {
     int phys = 2;
-    char* ifname = "wlan1mon";
+    char* ifname = "wlan0";
 
     setlogmask(LOG_UPTO(LOG_DEBUG));
     /* setlogmask(LOG_UPTO(LOG_NOTICE)); */

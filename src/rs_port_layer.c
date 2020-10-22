@@ -147,7 +147,7 @@ static int rs_port_layer_receive_fixed_channel(struct rs_port_layer *layer,
 retry:
     for (;;) {
         struct rs_packet *packet;
-        rs_channel_t channel = channel;
+        rs_channel_t channel = chan;
 
         struct rs_port_layer_packet unpacked;
         switch (rs_channel_layer_receive(ch, &packet, &channel)) {
