@@ -266,6 +266,8 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
         }
     }
     strcpy(layer->nl_ifname, ifname);
+    syslog(LOG_NOTICE, "Using physical device #%d ifname %s", layer->nl_wiphy,
+           layer->nl_ifname);
 
     /* see if interface exists already */
     nl_command_init(&cmd, layer, NL80211_CMD_GET_INTERFACE, NLM_F_DUMP,
@@ -369,7 +371,6 @@ void rs_channel_layer_pcap_destroy(struct rs_channel_layer *super) {
     nl_socket_free(layer->nl_socket);
 }
 
-
 /*
  ************************************************************************
  * tx/rx code
@@ -442,7 +443,8 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
     tx_len -= sizeof(tx_radiotap_header);
 
     struct rs_channel_layer_pcap_packet tmp_packet;
-    rs_channel_layer_pcap_packet_init(&tmp_packet, NULL, packet, NULL, 0, channel);
+    rs_channel_layer_pcap_packet_init(&tmp_packet, NULL, packet, NULL, 0,
+                                      channel);
     rs_packet_pack(&tmp_packet.super, &tx_ptr, &tx_len);
     rs_packet_destroy(&tmp_packet.super);
 
@@ -451,18 +453,18 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
         return -1;
     }
 
-    return 0;
+    return tx_ptr - tx_buf;
 }
 
 static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
                                          struct rs_packet **packet,
-                                         rs_channel_t* channel) {
+                                         rs_channel_t *channel) {
 
     struct rs_channel_layer_pcap *layer = rs_cast(rs_channel_layer_pcap, super);
     if (layer->pcap == NULL) {
         return -1;
     }
-    if(*channel){
+    if (*channel) {
         nl_set_channel(layer, 0x00FF & *channel);
     }
 
@@ -492,23 +494,24 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             case IEEE80211_RADIOTAP_FLAGS:
                 flags = *(uint8_t *)(it.this_arg);
                 break;
-            /* case IEEE80211_RADIOTAP_MCS: */
-            /*     mcs_known = *(uint8_t *)(it.this_arg); */
-            /*     mcs_flags = *(((uint8_t *)(it.this_arg)) + 1); */
-            /*     mcs = *(((uint8_t *)(it.this_arg)) + 2); */
-            /*     break; */
-            /* case IEEE80211_RADIOTAP_RATE: */
-            /*     rate = *(uint8_t *)(it.this_arg); */
-            /*     break; */
-            /* case IEEE80211_RADIOTAP_CHANNEL: */
-            /*     chan = get_unaligned((uint16_t *)(it.this_arg)); */
-            /*     chan_flags = get_unaligned(((uint16_t *)(it.this_arg)) + 1); */
-            /*     break; */
-            /* case IEEE80211_RADIOTAP_ANTENNA: */
-            /*     antenna = *(uint8_t *)(it.this_arg); */
-            /*     break; */
-            /* default: */
-            /*     break; */
+                /* case IEEE80211_RADIOTAP_MCS: */
+                /*     mcs_known = *(uint8_t *)(it.this_arg); */
+                /*     mcs_flags = *(((uint8_t *)(it.this_arg)) + 1); */
+                /*     mcs = *(((uint8_t *)(it.this_arg)) + 2); */
+                /*     break; */
+                /* case IEEE80211_RADIOTAP_RATE: */
+                /*     rate = *(uint8_t *)(it.this_arg); */
+                /*     break; */
+                /* case IEEE80211_RADIOTAP_CHANNEL: */
+                /*     chan = get_unaligned((uint16_t *)(it.this_arg)); */
+                /*     chan_flags = get_unaligned(((uint16_t *)(it.this_arg)) +
+                 * 1); */
+                /*     break; */
+                /* case IEEE80211_RADIOTAP_ANTENNA: */
+                /*     antenna = *(uint8_t *)(it.this_arg); */
+                /*     break; */
+                /* default: */
+                /*     break; */
             }
         }
 
@@ -533,11 +536,11 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
         memcpy(payload_copy, payload, payload_len);
 
         struct rs_channel_layer_pcap_packet pcap_packet;
-        if (rs_channel_layer_pcap_packet_unpack(&pcap_packet, payload_copy, payload_copy,
-                                                payload_len)) {
-            /* syslog( */
-            /*     LOG_DEBUG, */
-            /*     "Received packet which could not be unpacked on channel layer"); */
+        if (rs_channel_layer_pcap_packet_unpack(&pcap_packet, payload_copy,
+                                                payload_copy, payload_len)) {
+            syslog(
+                LOG_DEBUG,
+                "Received packet which could not be unpacked on channel layer");
             free(payload_copy);
             return RS_CHANNEL_LAYER_IRR;
         }
@@ -576,4 +579,3 @@ static struct rs_channel_layer_vtable vtable = {
     .ch_base = rs_channel_layer_pcap_ch_base,
     .ch_n = rs_channel_layer_pcap_ch_n,
 };
-

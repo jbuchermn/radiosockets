@@ -12,7 +12,7 @@
         _subclass_, super)))
 
 inline long msec_diff(struct timespec t1, struct timespec t2){
-    return (t1.tv_sec - t2.tv_sec) * 1000 + (t1.tv_nsec - t2.tv_nsec) / 1000000;
+    return (t1.tv_sec - t2.tv_sec) * 1000L + (t1.tv_nsec - t2.tv_nsec) / 1000000L;
 }
 
 #endif

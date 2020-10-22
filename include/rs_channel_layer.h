@@ -31,7 +31,7 @@ struct rs_channel_layer_vtable {
     void (*destroy)(struct rs_channel_layer *layer);
 
     /*
-     * Nonzero value indicates error
+     * Positive value indicates success, returns number of bytes
      */
     int (*transmit)(struct rs_channel_layer *layer, struct rs_packet *packet,
                     rs_channel_t channel);

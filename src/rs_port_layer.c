@@ -34,6 +34,18 @@ void rs_port_layer_init(struct rs_port_layer *layer,
              j++) {
             layer->infos[i][j].id =
                 rs_channel_layer_ch(layer->channel_layers[i], j);
+            rs_stat_init(&layer->infos[i][j].tx_stat_bytes, RS_STAT_AGG_SUM,
+                         "TX", "bps");
+            rs_stat_init(&layer->infos[i][j].rx_stat_bytes, RS_STAT_AGG_SUM,
+                         "RX", "bps");
+            rs_stat_init(&layer->infos[i][j].tx_stat_packets, RS_STAT_AGG_COUNT,
+                         "TX", "pps");
+            rs_stat_init(&layer->infos[i][j].rx_stat_packets, RS_STAT_AGG_COUNT,
+                         "RX", "pps");
+            rs_stat_init(&layer->infos[i][j].rx_stat_dt, RS_STAT_AGG_AVG,
+                         "RX dt", "ms");
+            rs_stat_init(&layer->infos[i][j].rx_stat_missed_packets,
+                         RS_STAT_AGG_SUM, "RX miss", "pps");
         }
     }
 }
@@ -101,8 +113,26 @@ void rs_port_layer_destroy(struct rs_port_layer *layer) {
     layer->infos = NULL;
 }
 
+static int _transmit(struct rs_port_layer *layer, struct rs_packet *packet,
+                     struct rs_channel_layer *channel_layer,
+                     rs_channel_t channel, struct rs_port_channel_info *info) {
+
+    int bytes;
+    if ((bytes = rs_channel_layer_transmit(channel_layer, packet, channel)) >
+        0) {
+        info->tx_last_seq++;
+        clock_gettime(CLOCK_REALTIME, &info->tx_last_ts);
+
+        rs_stat_register(&info->rx_stat_packets, 1.0);
+        rs_stat_register(&info->rx_stat_bytes, bytes);
+        return bytes;
+    }
+
+    return -1;
+}
+
 int rs_port_layer_transmit(struct rs_port_layer *layer,
-                           struct rs_packet *packet, rs_port_id_t port) {
+                           struct rs_packet *send_packet, rs_port_id_t port) {
 
     if (!port) {
         syslog(LOG_ERR, "Wrong API to submit command packets");
@@ -111,15 +141,23 @@ int rs_port_layer_transmit(struct rs_port_layer *layer,
 
     struct rs_port *p = NULL;
     struct rs_channel_layer *ch = NULL;
-    _retrieve(layer, port, &ch, &p, NULL);
+    struct rs_port_channel_info *info = NULL;
+    if (_retrieve(layer, port, &ch, &p, &info))
+        return -1;
 
-    return 0;
+    struct rs_port_layer_packet packet;
+    rs_port_layer_packet_init(&packet, NULL, send_packet, NULL, 0);
+    packet.command[0] = RS_PORT_CMD_HEARTBEAT;
+    packet.seq = info->tx_last_seq + 1;
+
+    int res = _transmit(layer, &packet.super, ch, p->bound_channel, info);
+
+    rs_packet_destroy(&packet.super);
+    return res;
 }
 
-static int rs_port_layer_receive_fixed_channel(struct rs_port_layer *layer,
-                                               struct rs_packet **packet_ret,
-                                               rs_port_id_t *port_ret,
-                                               rs_channel_t chan) {
+static int _receive(struct rs_port_layer *layer, struct rs_packet **packet_ret,
+                    rs_port_id_t *port_ret, rs_channel_t chan) {
     struct rs_channel_layer *ch = NULL;
     int i_ch;
     for (int i = 0; i < layer->n_channel_layers; i++) {
@@ -134,7 +172,7 @@ static int rs_port_layer_receive_fixed_channel(struct rs_port_layer *layer,
         return -1;
     }
 
-    struct rs_port_channel_info* info = NULL;
+    struct rs_port_channel_info *info = NULL;
     for (int i = 0; i < rs_channel_layer_ch_n(ch); i++) {
         if (layer->infos[i_ch][i].id == chan)
             info = layer->infos[i_ch] + i;
@@ -160,14 +198,20 @@ retry:
             }
             /* At this point, packet is invalid, we only have unpacked */
 
-            clock_gettime(CLOCK_REALTIME, &info->rx_last_ts);
-            if(unpacked.seq != info->rx_last_seq + 1){
-                syslog(LOG_DEBUG, "Missed frames");
-            }
+            struct timespec now;
+            clock_gettime(CLOCK_REALTIME, &now);
+            info->rx_last_ts = now;
             info->rx_last_seq = unpacked.seq;
-            /*
-             * TODO: Register stats
-             */
+            uint64_t now_nsec =
+                now.tv_sec * (uint64_t)1000000000L + now.tv_nsec;
+            double dt_msec = (now_nsec - unpacked.ts_sent) / 1000000L;
+
+            rs_stat_register(&info->rx_stat_packets, 1.0);
+            rs_stat_register(&info->rx_stat_bytes,
+                             unpacked.super.payload_data_len);
+            rs_stat_register(&info->rx_stat_dt, dt_msec);
+            rs_stat_register(&info->rx_stat_missed_packets,
+                             unpacked.seq - info->rx_last_seq - 1);
 
             if (unpacked.port == 0) {
                 /* Received a command packet */
@@ -211,17 +255,18 @@ int rs_port_layer_receive(struct rs_port_layer *layer,
     /*
      * For now, only listen on command channel
      */
-    return rs_port_layer_receive_fixed_channel(layer, packet, port,
-                                               layer->ports[0].bound_channel);
+    return _receive(layer, packet, port, layer->ports[0].bound_channel);
 }
+
 void rs_port_layer_main(struct rs_port_layer *layer,
                         struct rs_port_layer_packet *received) {
 
     struct rs_channel_layer *ch = NULL;
     struct rs_port_channel_info *info = NULL;
-    _retrieve(layer, layer->ports[0].id, &ch, NULL, &info);
+    if (_retrieve(layer, layer->ports[0].id, &ch, NULL, &info))
+        return;
     if (received) {
-        if(received->command[0] == RS_PORT_CMD_HEARTBEAT){
+        if (received->command[0] == RS_PORT_CMD_HEARTBEAT) {
             printf("R\n");
         }
     } else {
@@ -232,25 +277,18 @@ void rs_port_layer_main(struct rs_port_layer *layer,
         struct timespec now;
         clock_gettime(CLOCK_REALTIME, &now);
         long msec = msec_diff(now, info->tx_last_ts);
-        if (msec >= RS_PORT_CHANNEL_INFO_HEARTBEAT_MSEC) {
-            uint8_t* dummy = calloc(1024, sizeof(uint8_t));
-            memset(dummy, 0xDD, 1024);
+        if (msec >= RS_PORT_CMD_HEARTBEAT_MSEC) {
+            uint8_t *dummy = calloc(RS_PORT_CMD_DUMMY_SIZE, sizeof(uint8_t));
+            memset(dummy, 0xDD, RS_PORT_CMD_DUMMY_SIZE);
 
             struct rs_port_layer_packet packet;
-            rs_port_layer_packet_init(&packet, dummy, NULL, dummy, 1024);
+            rs_port_layer_packet_init(&packet, dummy, NULL, dummy,
+                                      RS_PORT_CMD_DUMMY_SIZE);
             packet.command[0] = RS_PORT_CMD_HEARTBEAT;
             packet.seq = info->tx_last_seq + 1;
 
-            printf("T\n");
-            if (!rs_channel_layer_transmit(ch, &packet.super,
-                                           layer->ports[0].bound_channel)) {
-                info->tx_last_seq++;
-                info->tx_last_ts = now;
-
-                /*
-                 * TODO: register stats
-                 */
-            }
+            _transmit(layer, &packet.super, ch, layer->ports[0].bound_channel,
+                      info);
 
             rs_packet_destroy(&packet.super);
         }

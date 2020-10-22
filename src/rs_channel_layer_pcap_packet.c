@@ -17,10 +17,8 @@ void rs_channel_layer_pcap_packet_pack_header(struct rs_packet *super,
                                                      int *buffer_len) {
     struct rs_channel_layer_pcap_packet *packet =
         rs_cast(rs_channel_layer_pcap_packet, super);
-    /*
-     * TODO: Assumes rs_channel_t to be 2 bytes
-     */
-    if (*buffer_len < 4) {
+
+    if (*buffer_len < 2 + sizeof(rs_channel_t)) {
         syslog(LOG_ERR, "pack: buffer too short");
         return;
     }
@@ -34,13 +32,11 @@ void rs_channel_layer_pcap_packet_pack_header(struct rs_packet *super,
     (*buffer_len)--;
 
     /* channel */
-    (**buffer) = (uint8_t)(packet->channel >> 8);
-    (*buffer)++;
-    (*buffer_len)--;
-
-    (**buffer) = (uint8_t)(packet->channel % 256);
-    (*buffer)++;
-    (*buffer_len)--;
+    for (int i = sizeof(rs_channel_t) - 1; i >= 0; i--) {
+        (**buffer) = (uint8_t)(packet->channel >> (8 * i));
+        (*buffer)++;
+        (*buffer_len)--;
+    }
 }
 
 void rs_channel_layer_pcap_packet_init(

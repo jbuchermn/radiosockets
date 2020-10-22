@@ -41,6 +41,11 @@
   },
   {
     "directory": ".",
+    "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c src/rs_stat.c  -o src/rs_stat.o",
+    "file": "src/rs_stat.o"
+  },
+  {
+    "directory": ".",
     "command": "gcc -Wall -g -O3 -Iinclude -Idependencies -I/usr/include/libnl3 -c dependencies/radiotap-library/radiotap.c  -o dependencies/radiotap-library/radiotap.o",
     "file": "dependencies/radiotap-library/radiotap.o"
   }

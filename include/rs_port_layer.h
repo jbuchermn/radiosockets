@@ -6,6 +6,7 @@
 
 #include "rs_channel_layer.h"
 #include "rs_packet.h"
+#include "rs_stat.h"
 
 #define RS_PORT_LAYER_EOF 1
 
@@ -35,20 +36,20 @@ void rs_port_layer_init(struct rs_port_layer *layer,
 void rs_port_layer_destroy(struct rs_port_layer *layer);
 
 /*
- * A value of zero 
+ * Positive value indicates success, returns number of bytes
  */
 int rs_port_layer_transmit(struct rs_port_layer *layer,
                            struct rs_packet *packet, rs_port_id_t port);
 
-    /*
-     * (*port) is only set, not read
-     * Return values:
-     *  negative: errors
-     *  0: packet / port placed in args - maybe more packets to go
-     *  RS_PORT_LAYER_EOF
-     */
-int rs_port_layer_receive(struct rs_port_layer *layer, struct rs_packet **packet,
-                          rs_port_id_t *port);
+/*
+ * (*port) is only set, not read
+ * Return values:
+ *  negative: errors
+ *  0: packet / port placed in args - maybe more packets to go
+ *  RS_PORT_LAYER_EOF
+ */
+int rs_port_layer_receive(struct rs_port_layer *layer,
+                          struct rs_packet **packet, rs_port_id_t *port);
 
 /*
  * Handle port layer communication (channel-switching / heartbeats / ...)
@@ -61,11 +62,9 @@ struct rs_port {
     rs_channel_t bound_channel;
 };
 
+#define RS_PORT_CMD_DUMMY_SIZE 32
 #define RS_PORT_CMD_HEARTBEAT 0xFD
-
-#define RS_PORT_CHANNEL_INFO_HEARTBEAT_MSEC 100
-#define RS_PORT_CHANNEL_INFO_N 10
-#define RS_PORT_CHANNEL_INFO_DT_MSEC 500
+#define RS_PORT_CMD_HEARTBEAT_MSEC 50
 
 struct rs_port_channel_info {
     rs_channel_t id;
@@ -76,12 +75,14 @@ struct rs_port_channel_info {
     rs_port_seq_t tx_last_seq;
     rs_port_seq_t rx_last_seq;
 
-    struct timespec stat_t0;
-    int tx_stat_bits[RS_PORT_CHANNEL_INFO_N];
-    int rx_stat_bits[RS_PORT_CHANNEL_INFO_N];
+    struct rs_stat tx_stat_bytes;
+    struct rs_stat rx_stat_bytes;
 
-    int tx_stat_packets[RS_PORT_CHANNEL_INFO_N];
-    int rx_stat_packets[RS_PORT_CHANNEL_INFO_N];
+    struct rs_stat tx_stat_packets;
+    struct rs_stat rx_stat_packets;
+
+    struct rs_stat rx_stat_missed_packets;
+    struct rs_stat rx_stat_dt;
 };
 
 #endif

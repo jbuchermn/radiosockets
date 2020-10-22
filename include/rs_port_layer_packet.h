@@ -11,6 +11,9 @@ struct rs_port_layer_packet {
     rs_port_id_t port;
     rs_port_seq_t seq;
 
+    /* is set in init() to nanosecond timestamp */
+    uint64_t ts_sent;
+
     uint8_t command[RS_PORT_LAYER_COMMAND_LENGTH];
 };
 

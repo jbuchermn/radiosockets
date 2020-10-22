@@ -20,8 +20,8 @@ void signal_handler(int sig_num) {
 }
 
 int main() {
-    int phys = 2;
-    char* ifname = "wlan0";
+    int phys = 1;
+    char* ifname = "wlan1mon";
 
     setlogmask(LOG_UPTO(LOG_DEBUG));
     /* setlogmask(LOG_UPTO(LOG_NOTICE)); */
