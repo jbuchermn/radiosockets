@@ -15,7 +15,8 @@ static struct rs_packet_vtable vtable;
 void rs_port_layer_packet_pack_header(struct rs_packet *super, uint8_t **buffer,
                                       int *buffer_len) {
     struct rs_port_layer_packet *packet = rs_cast(rs_port_layer_packet, super);
-    if (*buffer_len < sizeof(rs_port_id_t) + sizeof(rs_port_seq_t) + sizeof(uint64_t)) {
+    if (*buffer_len <
+        sizeof(rs_port_id_t) + sizeof(rs_port_seq_t) + sizeof(uint64_t)) {
         syslog(LOG_ERR, "pack: buffer too short");
         return;
     }
@@ -67,7 +68,7 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
                                 struct rs_packet *from_packet) {
 
     if (from_packet->payload_data_len <
-        sizeof(rs_port_id_t) + sizeof(rs_port_seq_t)) {
+        sizeof(rs_port_id_t) + sizeof(rs_port_seq_t) + sizeof(uint64_t)) {
         return -1;
     }
 
@@ -76,7 +77,7 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
                               from_packet->payload_data,
                               from_packet->payload_data_len);
 
-    /* Set port and seq */
+    /* Set port, seq nad ts_sent */
     packet->port = 0;
     for (int i = sizeof(rs_port_id_t) - 1; i >= 0; i--) {
         packet->port += (*packet->super.payload_data) << (8 * i);
@@ -86,6 +87,12 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
     packet->seq = 0;
     for (int i = sizeof(rs_port_seq_t) - 1; i >= 0; i--) {
         packet->seq += (*packet->super.payload_data) << (8 * i);
+        packet->super.payload_data++;
+        packet->super.payload_data_len--;
+    }
+    packet->ts_sent = 0;
+    for (int i = sizeof(uint64_t) - 1; i >= 0; i--) {
+        packet->ts_sent += (*packet->super.payload_data) << (8 * i);
         packet->super.payload_data++;
         packet->super.payload_data_len--;
     }

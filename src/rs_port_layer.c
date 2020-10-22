@@ -267,7 +267,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
         return;
     if (received) {
         if (received->command[0] == RS_PORT_CMD_HEARTBEAT) {
-            printf("R\n");
+            /* Okay */
         }
     } else {
         /*

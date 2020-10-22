@@ -100,10 +100,12 @@ void rs_stat_printf(struct rs_stat *stat) {
 
     printf("STAT[%10s]: ", stat->title);
     for (int i = 0; i < RS_STAT_N - idx; i++) {
-        printf("%.2e%5s   ", stat->last_data[i], stat->unit);
+        if(stat->last_data[i] == 0.0) printf("             ");
+        else printf("%+.2e%3s ", stat->last_data[i], stat->unit);
     }
     for (int i = 0; i < idx; i++) {
-        printf("%.2e%5s   ", stat->data[i], stat->unit);
+        if(stat->data[i] == 0.0) printf("             ");
+        else printf("%+.2e%3s ", stat->data[i], stat->unit);
     }
 
     printf("\n");
