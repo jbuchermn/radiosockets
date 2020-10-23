@@ -11,7 +11,7 @@ typedef uint16_t rs_server_id_t;
 struct rs_server_state {
     int running;
 
-    /* both ids are fixed */
+    /* both ids are fixed and nonzero */
     rs_server_id_t own_id;
     rs_server_id_t other_id;
 };

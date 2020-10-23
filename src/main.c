@@ -1,3 +1,4 @@
+#include <getopt.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -19,12 +20,62 @@ void signal_handler(int sig_num) {
     signal(SIGINT, signal_handler);
 }
 
-int main() {
+int main(int argc, char **argv) {
     /* parameters */
-    int phys = 10;
-    char *ifname = "wlan9mon";
-    rs_server_id_t own = 0xFF00;
-    rs_server_id_t other = 0xDD00;
+    rs_channel_t default_channel = 0x1006;
+    int phys = -2;               /* invalid */
+    rs_server_id_t own = 0;      /* invalid */
+    rs_server_id_t other = 0;    /* invalid */
+    char ifname[IFNAMSIZ] = {0}; /* invalid */
+
+    static struct option opts[] = {{"phys", required_argument, NULL, 'p'},
+                                   {"ifname", required_argument, NULL, 'i'},
+                                   {"channel", required_argument, NULL, 'c'},
+                                   {"own", required_argument, NULL, 'a'},
+                                   {"other", required_argument, NULL, 'b'},
+                                   {NULL, 0, NULL, 0}};
+
+    int idx;
+    int c;
+    while ((c = getopt_long(argc, argv, "a:b:c:i:p:", opts, &idx)) != -1) {
+        switch (c) {
+        case 'p':
+            phys = atoi(optarg);
+            break;
+        case 'i':
+            strcpy(ifname, optarg);
+            break;
+        case 'c':
+            default_channel = strtol(optarg, NULL, 16);
+            break;
+        case 'a':
+            own = strtol(optarg, NULL, 16);
+            break;
+        case 'b':
+            other = strtol(optarg, NULL, 16);
+            break;
+        default:
+            exit(1);
+            break;
+        }
+    }
+
+    if (phys == -2) {
+        printf("Invalid phys\n");
+        exit(1);
+    }
+    if (ifname[0] == 0) {
+        printf("Invalid ifname\n");
+        exit(1);
+    }
+    if (own == 0) {
+        printf("Invalid own id\n");
+        exit(1);
+    }
+    if (other == 0) {
+        printf("Invalid other id\n");
+        exit(1);
+    }
 
     /* set up state */
     state.running = 1;
@@ -51,7 +102,7 @@ int main() {
 
     /* set up port layer */
     struct rs_port_layer layer2;
-    rs_port_layer_init(&layer2, layer1s, 1, 0x1006);
+    rs_port_layer_init(&layer2, layer1s, 1, default_channel);
 
     /* main loop */
     signal(SIGINT, signal_handler);
@@ -60,7 +111,8 @@ int main() {
 
         struct rs_packet *packet;
         rs_port_id_t port;
-        while(!rs_port_layer_receive(&layer2, &packet, &port)){}
+        while (!rs_port_layer_receive(&layer2, &packet, &port)) {
+        }
         rs_port_layer_main(&layer2, NULL);
     }
 
