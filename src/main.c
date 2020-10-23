@@ -46,7 +46,7 @@ int main() {
 
     /* port layer */
     struct rs_port_layer layer2;
-    rs_port_layer_init(&layer2, layer1s, 1, 0x1006);
+    rs_port_layer_init(&layer2, layer1s, 1, 0x100A);
 
     /* main loop */
     state.running = 1;
@@ -56,9 +56,7 @@ int main() {
 
         struct rs_packet *packet;
         rs_port_id_t port;
-        while (!rs_port_layer_receive(&layer2, &packet, &port)) {
-            printf("R");
-        }
+        while(!rs_port_layer_receive(&layer2, &packet, &port)){}
         rs_port_layer_main(&layer2, NULL);
     }
 
