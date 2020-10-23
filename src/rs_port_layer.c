@@ -34,9 +34,9 @@ void rs_port_layer_init(struct rs_port_layer *layer,
              j++) {
             layer->infos[i][j].id =
                 rs_channel_layer_ch(layer->channel_layers[i], j);
-            rs_stat_init(&layer->infos[i][j].tx_stat_bytes, RS_STAT_AGG_SUM,
+            rs_stat_init(&layer->infos[i][j].tx_stat_bits, RS_STAT_AGG_SUM,
                          "TX", "bps");
-            rs_stat_init(&layer->infos[i][j].rx_stat_bytes, RS_STAT_AGG_SUM,
+            rs_stat_init(&layer->infos[i][j].rx_stat_bits, RS_STAT_AGG_SUM,
                          "RX", "bps");
             rs_stat_init(&layer->infos[i][j].tx_stat_packets, RS_STAT_AGG_COUNT,
                          "TX", "pps");
@@ -124,7 +124,7 @@ static int _transmit(struct rs_port_layer *layer, struct rs_packet *packet,
         clock_gettime(CLOCK_REALTIME, &info->tx_last_ts);
 
         rs_stat_register(&info->tx_stat_packets, 1.0);
-        rs_stat_register(&info->tx_stat_bytes, bytes);
+        rs_stat_register(&info->tx_stat_bits, 8*bytes);
         return bytes;
     }
 
@@ -213,8 +213,8 @@ retry:
             double dt_msec = (now_nsec - unpacked.ts_sent) / 1000000L;
 
             rs_stat_register(&info->rx_stat_packets, 1.0);
-            rs_stat_register(&info->rx_stat_bytes,
-                             bytes);
+            rs_stat_register(&info->rx_stat_bits,
+                             8*bytes);
             rs_stat_register(&info->rx_stat_dt, dt_msec);
             rs_stat_register(&info->rx_stat_missed_packets,
                              unpacked.seq - info->rx_last_seq - 1);
@@ -307,9 +307,9 @@ void rs_port_layer_main(struct rs_port_layer *layer,
 
             /* Temporary: Print out statistics */
             printf("\033[2J\n");
-            rs_stat_printf(&info->tx_stat_bytes);
+            rs_stat_printf(&info->tx_stat_bits);
             rs_stat_printf(&info->tx_stat_packets);
-            rs_stat_printf(&info->rx_stat_bytes);
+            rs_stat_printf(&info->rx_stat_bits);
             rs_stat_printf(&info->rx_stat_packets);
             rs_stat_printf(&info->rx_stat_dt);
             rs_stat_printf(&info->rx_stat_missed_packets);

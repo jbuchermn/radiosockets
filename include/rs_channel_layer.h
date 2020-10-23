@@ -1,8 +1,8 @@
 #ifndef RS_CHANNEL_LAYER_H
 #define RS_CHANNEL_LAYER_H
 
-#include <stdint.h>
 #include <assert.h>
+#include <stdint.h>
 
 #define RS_CHANNEL_LAYER_EOF 1
 #define RS_CHANNEL_LAYER_IRR 2
@@ -17,13 +17,17 @@
  */
 typedef uint16_t rs_channel_t;
 
+struct rs_server_state;
 struct rs_packet;
 struct rs_channel_layer_vtable;
 
 struct rs_channel_layer {
+    struct rs_server_state *server;
     struct rs_channel_layer_vtable *vtable;
 };
 
+void rs_channel_layer_init(struct rs_channel_layer *layer,
+                           struct rs_server_state *server);
 int rs_channel_layer_owns_channel(struct rs_channel_layer *layer,
                                   rs_channel_t channel);
 

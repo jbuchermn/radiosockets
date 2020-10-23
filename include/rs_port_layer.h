@@ -62,9 +62,9 @@ struct rs_port {
     rs_channel_t bound_channel;
 };
 
-#define RS_PORT_CMD_DUMMY_SIZE 1024
+#define RS_PORT_CMD_DUMMY_SIZE 1000
 #define RS_PORT_CMD_HEARTBEAT 0xFD
-#define RS_PORT_CMD_HEARTBEAT_MSEC 50
+#define RS_PORT_CMD_HEARTBEAT_MSEC 5
 
 struct rs_port_channel_info {
     rs_channel_t id;
@@ -75,8 +75,8 @@ struct rs_port_channel_info {
     rs_port_seq_t tx_last_seq;
     rs_port_seq_t rx_last_seq;
 
-    struct rs_stat tx_stat_bytes;
-    struct rs_stat rx_stat_bytes;
+    struct rs_stat tx_stat_bits;
+    struct rs_stat rx_stat_bits;
 
     struct rs_stat tx_stat_packets;
     struct rs_stat rx_stat_packets;

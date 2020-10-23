@@ -20,6 +20,7 @@
 #include "rs_channel_layer_pcap.h"
 #include "rs_channel_layer_pcap_packet.h"
 #include "rs_packet.h"
+#include "rs_server_state.h"
 #include "rs_util.h"
 
 /*
@@ -42,6 +43,14 @@ static int callback_finish(struct nl_msg *msg, void *arg) {
     return NL_OK;
 }
 
+static int callback_error(struct sockaddr_nl *sock, struct nlmsgerr *msg,
+                          void *arg) {
+    struct nl_command *cmd = arg;
+
+    cmd->cb_in_progress = 0;
+    return NL_OK;
+}
+
 static int nl_command_init(struct nl_command *command,
                            struct rs_channel_layer_pcap *root, int cmd,
                            int flags, nl_recvmsg_msg_cb_t callback) {
@@ -52,6 +61,8 @@ static int nl_command_init(struct nl_command *command,
               command);
     nl_cb_set(root->nl_cb, NL_CB_ACK, NL_CB_CUSTOM, callback_finish, command);
     nl_cb_set(root->nl_cb, NL_CB_VALID, NL_CB_CUSTOM, callback, command);
+    /* nl_cb_err(root->nl_cb, NL_CB_VERBOSE, NULL, stderr); */
+    nl_cb_err(root->nl_cb, NL_CB_CUSTOM, callback_error, command);
 
     command->msg = nlmsg_alloc();
     if (!command->msg) {
@@ -195,8 +206,10 @@ static void nl_set_channel(struct rs_channel_layer_pcap *layer,
  */
 static struct rs_channel_layer_vtable vtable;
 
-int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
+int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
+                               struct rs_server_state *server, int phys,
                                char *ifname) {
+    rs_channel_layer_init(&layer->super, server);
     layer->super.vtable = &vtable;
     layer->pcap = NULL;
 
@@ -232,8 +245,6 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
         return -1;
     }
 
-    nl_cb_err(layer->nl_cb, NL_CB_VERBOSE, NULL, stderr);
-
     /* look for monitor-capable devices and store in nl_wiphy, nl_ifname */
     struct nl_command cmd;
     struct nl_cb_get_wiphy_ret ret = {0};
@@ -246,8 +257,6 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
         syslog(LOG_ERR, "No monitor-capable devices available");
         rs_channel_layer_destroy(&layer->super);
         return -2;
-    } else if (ret.n_capable_phys == 1) {
-        layer->nl_wiphy = ret.capable_phys[0];
     } else {
         if (phys == -1) {
             layer->nl_wiphy = ret.capable_phys[0];
@@ -298,8 +307,8 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
                layer->nl_ifname);
 
         /*
-         * TODO: RT5572 is possibly busy - need custom error handler otherwise
-         * program stalls (aireplay-ng manages to overcome the business)
+         * Possibly busy - need custom error handler otherwise
+         * program stalls
          */
         /* put it in monitor mode */
         nl_command_init(&cmd, layer, NL80211_CMD_SET_INTERFACE, 0,
@@ -362,6 +371,39 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
         return -1;
     }
 
+    /* set filter */
+    assert(sizeof(rs_server_id_t) == 2);
+    int link_encap = pcap_datalink(layer->pcap);
+    struct bpf_program bpfprogram;
+    char program[200];
+
+    switch (link_encap) {
+    case DLT_IEEE802_11_RADIO:
+        syslog(LOG_DEBUG, "DLT_IEEE802_11_RADIO Encap");
+        sprintf(program, "ether src %.12lx && ether dst %.12lx",
+                0x112233440000 | ((layer->super.server->other_id >> 8) << 8) |
+                    (layer->super.server->other_id & 0xFF),
+                0x112233440000 | ((layer->super.server->own_id >> 8) << 8) |
+                    (layer->super.server->own_id & 0xFF));
+        break;
+
+    default:
+        syslog(LOG_ERR, "Unknown encapsulation");
+        return -1;
+    }
+
+    if (pcap_compile(layer->pcap, &bpfprogram, program, 1, 0) == -1) {
+        syslog(LOG_ERR, "Unable to compile %s: %s", program,
+               pcap_geterr(layer->pcap));
+    }
+
+    if (pcap_setfilter(layer->pcap, &bpfprogram) == -1) {
+        syslog(LOG_ERR, "Unable to set filter %s: %s", program,
+               pcap_geterr(layer->pcap));
+    }
+
+    pcap_freecode(&bpfprogram);
+
     /* set initial channel */
     layer->on_channel = 0;
     nl_set_channel(layer, 0x06);
@@ -420,11 +462,13 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
 
 static uint8_t ieee80211_header[] __attribute__((unused)) = {
     // IEEE802.11 header
-    0x08, 0x01, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF,
-    0xFF, 0xFF, 0x13, 0x22, 0x33, 0x44, 0x55, 0x66, 0x13,
-    0x22, 0x33, 0x44, 0x55, 0x66, 0x00, 0x00,
-
-    // TODO: RATES?
+    0x08, 0x01, 0x00, 0x00,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    // src mac
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+    // dst mac
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+    0x00, 0x00,
 };
 
 int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
@@ -452,13 +496,22 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
     // Set MCS
     // https://en.wikipedia.org/wiki/IEEE_802.11n-2009#Data_rates
     tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_BW_20;
-    tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_SGI;
+    /* tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_SGI; */
     tx_ptr[16] = 0;
 
     tx_ptr += sizeof(tx_radiotap_header);
     tx_len -= sizeof(tx_radiotap_header);
 
-    memcpy(tx_ptr, tx_radiotap_header, sizeof(ieee80211_header));
+    memcpy(tx_ptr, ieee80211_header, sizeof(ieee80211_header));
+
+    assert(sizeof(rs_server_id_t) == 2);
+    // src mac
+    tx_ptr[14] = layer->super.server->own_id >> 8;
+    tx_ptr[15] = layer->super.server->own_id & 0xFF;
+    // dst mac
+    tx_ptr[20] = layer->super.server->other_id >> 8;
+    tx_ptr[21] = layer->super.server->other_id & 0xFF;
+
     tx_ptr += sizeof(ieee80211_header);
     tx_len -= sizeof(ieee80211_header);
 

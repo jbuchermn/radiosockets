@@ -1,8 +1,8 @@
 #ifndef RS_CHANNEL_LAYER_PCAP_H
 #define RS_CHANNEL_LAYER_PCAP_H
 
-#include <pcap/pcap.h>
 #include <linux/if.h>
+#include <pcap/pcap.h>
 
 #include "radiotap-library/radiotap.h"
 
@@ -32,14 +32,14 @@ struct rs_channel_layer_pcap {
 };
 
 /*
- * phys == 0 for first monitor-capable physical device
+ * phys == -1 for first monitor-capable physical device
  * ifname must be set. Depending on this name, either an existing interface is
  * turned to monitor (works on raspbery with patched rtl8188eus - deleting other
  * interface causes a crash and adding a secondary monitor interface does not
- * work) or a new interface is created aand other interfaces are deleted
+ * work) or a new interface is created and other interfaces are deleted
  */
-int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
+int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
+                               struct rs_server_state *server, int phys,
                                char *ifname);
-
 
 #endif
