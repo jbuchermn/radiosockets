@@ -12,8 +12,8 @@ class PhysicalDevice:
         self.idx = idx
         self.interfaces = []
         self.is_connected = False
-        self.chipset = None
-        self.driver = None
+        self.chipset = ""
+        self.driver = ""
 
 
 if __name__ == '__main__':
@@ -42,40 +42,25 @@ if __name__ == '__main__':
     if cur_phys:
         phys += [cur_phys]
 
-    lshw = cmd("lshw -c net").split("\n")
-    cur_logname = None
-    cur_conf = None
-    cur_bus = None
-    for l in [*lshw, "  *"]:
-        if len(l) < 2:
-            continue
-        if l[2] == "*":
-            if cur_logname:
-                ph = [p for p in phys if cur_logname in p.interfaces]
-                if len(ph) == 1:
-                    ph = ph[0]
-                    ph.driver = cur_conf
-                    ph.chipset = cur_bus
-
-            cur_logname = None
-            cur_conf = None
-            cur_bus = None
-        else:
-            if 'logical name' in l:
-                cur_logname = ':'.join(l.split(':')[1:]).strip()
-            elif 'configuration' in l:
-                cur_conf = ':'.join(l.split(':')[1:])
-            elif 'bus info' in l:
-                cur_bus = ':'.join(l.split(':')[1:])
+    for p in phys:
+        for i in p.interfaces:
+            try:
+                p.driver = cmd(
+                    "ls /sys/class/net/%s/device/driver/module/drivers" % i)
+            except:
+                pass
 
     print("\n\n")
     print("Available devices:")
     phys = [p for p in phys if not p.is_connected]
-    for p in phys:
-        print("* %d: %s %s%s" %
-              (p.idx, ', '.join(p.interfaces), p.chipset,
-               '\n\t'.join(p.driver.split(" "))))
+    for i, p in enumerate(phys):
+        print("%d: phys=%d %s %s driver=%s" %
+              (i, p.idx, ', '.join(p.interfaces), p.chipset,
+               p.driver))
 
+    if len(phys) == 0:
+        print("No available devices...")
+        exit(0)
     if len(phys) == 1:
         print("Selecting only available device...")
         phys = phys[0]
@@ -87,7 +72,7 @@ if __name__ == '__main__':
     arg_own = "0xDD00" if 'pi-up' in os.uname()[1] else "0xFF00"
     arg_other = "0xFF00" if 'pi-up' in os.uname()[1] else "0xDD00"
     arg_ifname = "wlan%dmon" % phys.idx
-    if "driver=8188eu" in phys.driver:
+    if "8188eu" in phys.driver:
         print("Detected patched 8188eu driver => using existing interface...")
         if len(phys.interfaces) != 1:
             print("Unexpected: %s" % phys.interfaces)

@@ -8,12 +8,13 @@
 #include "rs_util.h"
 
 void rs_stat_init(struct rs_stat *stat, int aggregate, const char *title,
-                  const char *unit) {
+                  const char *unit, double norm_factor) {
     clock_gettime(CLOCK_REALTIME, &stat->t0);
     stat->t0.tv_nsec %= 1000000L;
     stat->aggregate = aggregate;
     stat->title = title;
     stat->unit = unit;
+    stat->norm_factor = norm_factor;
 
     memset(stat->last_data, 0, RS_STAT_N * sizeof(int));
     memset(stat->data, 0, RS_STAT_N * sizeof(int));
@@ -38,9 +39,9 @@ void rs_stat_register(struct rs_stat *stat, double value) {
             stat->data[idx] += value;
             break;
         case RS_STAT_AGG_AVG:
-            stat->data[idx] = (stat->n_data[idx] / (stat->n_data[idx] + 1)) *
-                                  stat->data[idx] +
-                              value / (stat->n_data[idx] + 1);
+            stat->data[idx] *= stat->n_data[idx];
+            stat->data[idx] += value;
+            stat->data[idx] /= stat->n_data[idx] + 1;
             break;
         case RS_STAT_AGG_COUNT:
             stat->data[idx] += 1.0;
@@ -149,18 +150,12 @@ void rs_stat_printf(struct rs_stat *stat) {
 
     printf("STAT[%10s]: ", stat->title);
     for (int i = 0; i < RS_STAT_N - idx; i++) {
-        if(stat->last_data[i] == 0.0) printf("         ");
-        else{
-            printf_val(stat->last_data[i]);
-            printf("%-3s ", stat->unit);
-        }
+        printf_val(stat->last_data[i] * stat->norm_factor);
+        printf("%-3s ", stat->unit);
     }
     for (int i = 0; i < idx; i++) {
-        if(stat->data[i] == 0.0) printf("         ");
-        else{
-            printf_val(stat->data[i]);
-            printf("%-3s ", stat->unit);
-        }
+        printf_val(stat->data[i] * stat->norm_factor);
+        printf("%-3s ", stat->unit);
     }
 
     printf("\n");

@@ -35,17 +35,17 @@ void rs_port_layer_init(struct rs_port_layer *layer,
             layer->infos[i][j].id =
                 rs_channel_layer_ch(layer->channel_layers[i], j);
             rs_stat_init(&layer->infos[i][j].tx_stat_bits, RS_STAT_AGG_SUM,
-                         "TX", "bps");
+                         "TX", "bps", 1000. / RS_STAT_DT_MSEC);
             rs_stat_init(&layer->infos[i][j].rx_stat_bits, RS_STAT_AGG_SUM,
-                         "RX", "bps");
+                         "RX", "bps", 1000. / RS_STAT_DT_MSEC);
             rs_stat_init(&layer->infos[i][j].tx_stat_packets, RS_STAT_AGG_COUNT,
-                         "TX", "pps");
+                         "TX", "pps", 1000. / RS_STAT_DT_MSEC);
             rs_stat_init(&layer->infos[i][j].rx_stat_packets, RS_STAT_AGG_COUNT,
-                         "RX", "pps");
+                         "RX", "pps", 1000. / RS_STAT_DT_MSEC);
             rs_stat_init(&layer->infos[i][j].rx_stat_dt, RS_STAT_AGG_AVG,
-                         "RX dt", "ms");
+                         "RX dt", "ms", 1.);
             rs_stat_init(&layer->infos[i][j].rx_stat_missed_packets,
-                         RS_STAT_AGG_SUM, "RX miss", "pps");
+                         RS_STAT_AGG_AVG, "RX miss", "", 1.);
         }
     }
 }
@@ -124,7 +124,7 @@ static int _transmit(struct rs_port_layer *layer, struct rs_packet *packet,
         clock_gettime(CLOCK_REALTIME, &info->tx_last_ts);
 
         rs_stat_register(&info->tx_stat_packets, 1.0);
-        rs_stat_register(&info->tx_stat_bits, 8*bytes);
+        rs_stat_register(&info->tx_stat_bits, 8 * bytes);
         return bytes;
     }
 
@@ -201,7 +201,7 @@ retry:
             /* At this point, packet is invalid, we only have unpacked */
 
             /* The same packet is possibly received multiple times */
-            if(unpacked.seq == info->rx_last_seq){
+            if (unpacked.seq == info->rx_last_seq) {
                 rs_packet_destroy(&unpacked.super);
                 goto retry;
             }
@@ -213,11 +213,12 @@ retry:
             double dt_msec = (now_nsec - unpacked.ts_sent) / 1000000L;
 
             rs_stat_register(&info->rx_stat_packets, 1.0);
-            rs_stat_register(&info->rx_stat_bits,
-                             8*bytes);
+            rs_stat_register(&info->rx_stat_bits, 8 * bytes);
             rs_stat_register(&info->rx_stat_dt, dt_msec);
-            rs_stat_register(&info->rx_stat_missed_packets,
-                             unpacked.seq - info->rx_last_seq - 1);
+            for (int i = 0; i < unpacked.seq - info->rx_last_seq - 1; i++)
+                rs_stat_register(&info->rx_stat_missed_packets, 1.0);
+            rs_stat_register(&info->rx_stat_missed_packets, 0.0);
+
             info->rx_last_ts = now;
             info->rx_last_seq = unpacked.seq;
 
@@ -277,7 +278,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
         return;
     if (received) {
         if (received->command[0] == RS_PORT_CMD_HEARTBEAT) {
-            if(received->super.payload_data_len != RS_PORT_CMD_DUMMY_SIZE){
+            if (received->super.payload_data_len != RS_PORT_CMD_DUMMY_SIZE) {
                 syslog(LOG_ERR, "Received heartbeat of wrong size");
             }
             /* Okay */

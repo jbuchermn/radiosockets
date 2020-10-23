@@ -21,12 +21,13 @@ struct rs_stat {
     double data[RS_STAT_N];
     int n_data[RS_STAT_N];
 
+    double norm_factor;
     const char *title;
     const char *unit;
 };
 
 void rs_stat_init(struct rs_stat *stat, int aggregate, const char *title,
-                  const char *unit);
+                  const char *unit, double norm_factor);
 void rs_stat_register(struct rs_stat *stat, double value);
 void rs_stat_flush(struct rs_stat *stat);
 
