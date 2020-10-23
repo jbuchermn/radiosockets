@@ -77,22 +77,22 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
                               from_packet->payload_data,
                               from_packet->payload_data_len);
 
-    /* Set port, seq nad ts_sent */
+    /* Set port, seq and ts_sent */
     packet->port = 0;
     for (int i = sizeof(rs_port_id_t) - 1; i >= 0; i--) {
-        packet->port += (*packet->super.payload_data) << (8 * i);
+        packet->port += ((rs_port_id_t)(*packet->super.payload_data)) << (8 * i);
         packet->super.payload_data++;
         packet->super.payload_data_len--;
     }
     packet->seq = 0;
     for (int i = sizeof(rs_port_seq_t) - 1; i >= 0; i--) {
-        packet->seq += (*packet->super.payload_data) << (8 * i);
+        packet->seq += ((rs_port_seq_t)(*packet->super.payload_data)) << (8 * i);
         packet->super.payload_data++;
         packet->super.payload_data_len--;
     }
     packet->ts_sent = 0;
     for (int i = sizeof(uint64_t) - 1; i >= 0; i--) {
-        packet->ts_sent += (*packet->super.payload_data) << (8 * i);
+        packet->ts_sent += ((uint64_t)(*packet->super.payload_data)) << (8 * i);
         packet->super.payload_data++;
         packet->super.payload_data_len--;
     }
