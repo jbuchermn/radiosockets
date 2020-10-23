@@ -464,6 +464,7 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
     struct rs_channel_layer_pcap_packet tmp_packet;
     rs_channel_layer_pcap_packet_init(&tmp_packet, NULL, packet, NULL, 0,
                                       channel);
+    uint8_t* tx_begin_payload = tx_ptr;
     rs_packet_pack(&tmp_packet.super, &tx_ptr, &tx_len);
     rs_packet_destroy(&tmp_packet.super);
 
@@ -472,7 +473,7 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
         return -1;
     }
 
-    return tx_ptr - tx_buf;
+    return tx_ptr - tx_begin_payload - RS_CHANNEL_LAYER_PCAP_HEADER_SIZE;
 }
 
 static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,

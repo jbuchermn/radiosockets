@@ -90,6 +90,55 @@ void rs_stat_flush(struct rs_stat *stat) {
     stat->t0.tv_nsec = (t0_msec % 1000L) * 1000000L;
 }
 
+static void printf_val(double val){
+    const char* neg = " ";
+    if(val<0){
+        val *= -1;
+        neg = "-";
+    }
+
+    int m = 0;
+    while(val > 1000){
+        val /= 1000;
+        m += 1;
+    }
+
+    while(val < 1){
+        val *= 1000;
+        m -= 1;
+    }
+
+    const char* ms = " ";
+    switch(m){
+    case -3:
+        ms = "n";
+        break;
+    case -2:
+        ms = "u";
+        break;
+    case -1:
+        ms = "m";
+        break;
+    case 0:
+        ms = " ";
+        break;
+    case 1:
+        ms = "k";
+        break;
+    case 2:
+        ms = "M";
+        break;
+    case 3:
+        ms = "G";
+        break;
+    default:
+        ms = "?";
+        break;
+    }
+
+    printf("%s%3d%s", neg, (int)val, ms);
+}
+
 void rs_stat_printf(struct rs_stat *stat) {
     rs_stat_flush(stat);
 
@@ -100,12 +149,18 @@ void rs_stat_printf(struct rs_stat *stat) {
 
     printf("STAT[%10s]: ", stat->title);
     for (int i = 0; i < RS_STAT_N - idx; i++) {
-        if(stat->last_data[i] == 0.0) printf("             ");
-        else printf("%+.2e%3s ", stat->last_data[i], stat->unit);
+        if(stat->last_data[i] == 0.0) printf("         ");
+        else{
+            printf_val(stat->last_data[i]);
+            printf("%-3s ", stat->unit);
+        }
     }
     for (int i = 0; i < idx; i++) {
-        if(stat->data[i] == 0.0) printf("             ");
-        else printf("%+.2e%3s ", stat->data[i], stat->unit);
+        if(stat->data[i] == 0.0) printf("         ");
+        else{
+            printf_val(stat->data[i]);
+            printf("%-3s ", stat->unit);
+        }
     }
 
     printf("\n");

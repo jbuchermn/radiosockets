@@ -187,9 +187,11 @@ retry:
         struct rs_packet *packet;
         rs_channel_t channel = chan;
 
+        int bytes;
         struct rs_port_layer_packet unpacked;
         switch (rs_channel_layer_receive(ch, &packet, &channel)) {
         case 0:
+            bytes = packet->payload_data_len;
 
             if (rs_port_layer_packet_unpack(&unpacked, packet)) {
                 /* packed that could not be unpacked */
@@ -212,7 +214,7 @@ retry:
 
             rs_stat_register(&info->rx_stat_packets, 1.0);
             rs_stat_register(&info->rx_stat_bytes,
-                             unpacked.super.payload_data_len);
+                             bytes);
             rs_stat_register(&info->rx_stat_dt, dt_msec);
             rs_stat_register(&info->rx_stat_missed_packets,
                              unpacked.seq - info->rx_last_seq - 1);
@@ -275,6 +277,9 @@ void rs_port_layer_main(struct rs_port_layer *layer,
         return;
     if (received) {
         if (received->command[0] == RS_PORT_CMD_HEARTBEAT) {
+            if(received->super.payload_data_len != RS_PORT_CMD_DUMMY_SIZE){
+                syslog(LOG_ERR, "Received heartbeat of wrong size");
+            }
             /* Okay */
         }
     } else {
