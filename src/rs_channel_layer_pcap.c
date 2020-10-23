@@ -394,10 +394,7 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
     // set CHANNEL: bit 3
     // set TX_FLAGS: bit 15
     // set MCS: bit 19
-    0x08,
-    0x80,
-    0x08,
-    0x00,
+    0x08, 0x80, 0x08, 0x00,
 
     // CHANNEL
     // u16 frequency (MHz), u16 flags
@@ -405,16 +402,12 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
     // flags 7-0, 15-8
     // set Dynamic CCK-OFDM channel: bit 10
     // set 2GHz channel: bit 7
-    0x00,
-    0x00,
-    0x80,
-    0x04,
+    0x00, 0x00, 0x80, 0x04,
 
     // TX_FLAGS
     // u16 flags 7-0, 15-8
     // set NO_ACK: bit 3
-    0x08,
-    0x00,
+    0x08, 0x00,
 
     // MCS
     // u8 known, u8 flags, u8 mcs
@@ -423,15 +416,15 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
     (IEEE80211_RADIOTAP_MCS_HAVE_MCS | IEEE80211_RADIOTAP_MCS_HAVE_BW |
      IEEE80211_RADIOTAP_MCS_HAVE_GI | IEEE80211_RADIOTAP_MCS_HAVE_STBC |
      IEEE80211_RADIOTAP_MCS_HAVE_FEC),
-    0x10,
-    0x00,
+    0x10, 0x00};
 
+static uint8_t ieee80211_header[] __attribute__((unused)) = {
     // IEEE802.11 header
-    // 0x08, 0x01, 0x00, 0x00,
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-    0x13, 0x22, 0x33, 0x44, 0x55, 0x66,
-    0x13, 0x22, 0x33, 0x44, 0x55, 0x66,
-    0x00, 0x00,
+    0x08, 0x01, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF, 0x13, 0x22, 0x33, 0x44, 0x55, 0x66, 0x13,
+    0x22, 0x33, 0x44, 0x55, 0x66, 0x00, 0x00,
+
+    // TODO: RATES?
 };
 
 int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
@@ -464,6 +457,10 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
 
     tx_ptr += sizeof(tx_radiotap_header);
     tx_len -= sizeof(tx_radiotap_header);
+
+    memcpy(tx_ptr, tx_radiotap_header, sizeof(ieee80211_header));
+    tx_ptr += sizeof(ieee80211_header);
+    tx_len -= sizeof(ieee80211_header);
 
     struct rs_channel_layer_pcap_packet tmp_packet;
     rs_channel_layer_pcap_packet_init(&tmp_packet, NULL, packet, NULL, 0,
@@ -550,11 +547,8 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             payload_len -= 4;
         }
 
-        /*
-         * TODO: WHY?
-         */
-        payload += 4;
-        payload_len -= 4;
+        payload += sizeof(ieee80211_header);
+        payload_len -= sizeof(ieee80211_header);
 
         if (payload_len < 0)
             return RS_CHANNEL_LAYER_EOF;
@@ -572,7 +566,6 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             free(payload_copy);
             return RS_CHANNEL_LAYER_IRR;
         }
-        syslog(LOG_DEBUG, "Unpacked a packet");
 
         if (!rs_channel_layer_owns_channel(&layer->super,
                                            pcap_packet.channel)) {
