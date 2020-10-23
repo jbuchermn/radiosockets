@@ -104,7 +104,7 @@ static void printf_val(double val){
         m += 1;
     }
 
-    while(val < 1){
+    while(val < 1 && val != 0 /* D'oh */){
         val *= 1000;
         m -= 1;
     }

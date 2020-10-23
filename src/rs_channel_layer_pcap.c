@@ -379,7 +379,6 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
 
     switch (link_encap) {
     case DLT_IEEE802_11_RADIO:
-        syslog(LOG_DEBUG, "DLT_IEEE802_11_RADIO Encap");
         sprintf(program, "ether src %.12lx && ether dst %.12lx",
                 0x112233440000 | ((layer->super.server->other_id >> 8) << 8) |
                     (layer->super.server->other_id & 0xFF),
