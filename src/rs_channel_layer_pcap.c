@@ -179,10 +179,8 @@ static void nl_set_channel(struct rs_channel_layer_pcap *layer,
     nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY, layer->nl_wiphy);
 
     nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_FREQ, 2412 + 5 * channel);
-    nla_put_u32(cmd.msg, NL80211_ATTR_CHANNEL_WIDTH,
-                NL80211_CHAN_WIDTH_20_NOHT);
-    /* nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE,
-     * NL80211_CHAN_NO_HT); */
+    nla_put_u32(cmd.msg, NL80211_ATTR_CHANNEL_WIDTH, NL80211_CHAN_WIDTH_20);
+    nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE, NL80211_CHAN_HT20);
     /* nla_put_u32(cmd.msg, NL80211_ATTR_CENTER_FREQ1, 2412 + 5 * channel); */
     /* nla_put_u32(cmd.msg, NL80211_ATTR_CENTER_FREQ2, 2412 + 5 * channel); */
 
@@ -446,17 +444,16 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
 
     memcpy(tx_ptr, tx_radiotap_header, sizeof(tx_radiotap_header));
 
-    // TODO: Probably doesn't make a difference setting any of these */
-    // Set frequency
-    /* uint16_t freq = 2447; */
-    /* tx_ptr[8] = (uint8_t)freq; */
-    /* tx_ptr[9] = (uint8_t)(freq >> 8); */
+    // Set frequency (not clear if necessary)
+    uint16_t freq = 2412 + 5 * layer->on_channel;
+    tx_ptr[8] = (uint8_t)freq;
+    tx_ptr[9] = (uint8_t)(freq >> 8);
 
     // Set MCS
     // https://en.wikipedia.org/wiki/IEEE_802.11n-2009#Data_rates
-    /* tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_BW_40; */
-    /* tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_SGI; */
-    /* tx_ptr[16] = 0; */
+    tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_BW_20;
+    tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_SGI;
+    tx_ptr[16] = 0;
 
     tx_ptr += sizeof(tx_radiotap_header);
     tx_len -= sizeof(tx_radiotap_header);
@@ -464,7 +461,7 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
     struct rs_channel_layer_pcap_packet tmp_packet;
     rs_channel_layer_pcap_packet_init(&tmp_packet, NULL, packet, NULL, 0,
                                       channel);
-    uint8_t* tx_begin_payload = tx_ptr;
+    uint8_t *tx_begin_payload = tx_ptr;
     rs_packet_pack(&tmp_packet.super, &tx_ptr, &tx_len);
     rs_packet_destroy(&tmp_packet.super);
 

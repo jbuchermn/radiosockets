@@ -21,7 +21,7 @@ void signal_handler(int sig_num) {
 
 int main() {
     int phys = 1;
-    char *ifname = "wlp0s20f0u1";
+    char *ifname = "phys3mon";
 
     setlogmask(LOG_UPTO(LOG_DEBUG));
     /* setlogmask(LOG_UPTO(LOG_NOTICE)); */
