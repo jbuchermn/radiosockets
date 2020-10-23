@@ -198,10 +198,14 @@ retry:
             }
             /* At this point, packet is invalid, we only have unpacked */
 
+            /* The same packet is possibly received multiple times */
+            if(unpacked.seq == info->rx_last_seq){
+                rs_packet_destroy(&unpacked.super);
+                goto retry;
+            }
+
             struct timespec now;
             clock_gettime(CLOCK_REALTIME, &now);
-            info->rx_last_ts = now;
-            info->rx_last_seq = unpacked.seq;
             uint64_t now_nsec =
                 now.tv_sec * (uint64_t)1000000000L + now.tv_nsec;
             double dt_msec = (now_nsec - unpacked.ts_sent) / 1000000L;
@@ -212,6 +216,8 @@ retry:
             rs_stat_register(&info->rx_stat_dt, dt_msec);
             rs_stat_register(&info->rx_stat_missed_packets,
                              unpacked.seq - info->rx_last_seq - 1);
+            info->rx_last_ts = now;
+            info->rx_last_seq = unpacked.seq;
 
             if (unpacked.port == 0) {
                 /* Received a command packet */
@@ -226,6 +232,8 @@ retry:
                            unpacked.super.payload_data,
                            unpacked.super.payload_data_len);
             *port_ret = unpacked.port;
+
+            rs_packet_destroy(&unpacked.super);
 
             return 0;
 

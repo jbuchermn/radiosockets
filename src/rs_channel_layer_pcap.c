@@ -181,6 +181,10 @@ static void nl_set_channel(struct rs_channel_layer_pcap *layer,
     nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_FREQ, 2412 + 5 * channel);
     nla_put_u32(cmd.msg, NL80211_ATTR_CHANNEL_WIDTH,
                 NL80211_CHAN_WIDTH_20_NOHT);
+    /* nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE,
+     * NL80211_CHAN_NO_HT); */
+    /* nla_put_u32(cmd.msg, NL80211_ATTR_CENTER_FREQ1, 2412 + 5 * channel); */
+    /* nla_put_u32(cmd.msg, NL80211_ATTR_CENTER_FREQ2, 2412 + 5 * channel); */
 
     nl_command_run(&cmd);
 
@@ -295,7 +299,11 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
                "Interface '%s' exists, putting it in monitor mode...",
                layer->nl_ifname);
 
-        /* put it in monitor interface */
+        /*
+         * TODO: RT5572 is possibly busy - need custom error handler otherwise
+         * program stalls (aireplay-ng manages to overcome the business)
+         */
+        /* put it in monitor mode */
         nl_command_init(&cmd, layer, NL80211_CMD_SET_INTERFACE, 0,
                         nl_cb_default);
         nla_put_u32(cmd.msg, NL80211_ATTR_IFINDEX, layer->nl_if);
@@ -320,13 +328,12 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
     struct ifreq ifr;
     int fd;
 
-    strncpy(ifr.ifr_name, layer->nl_ifname, IFNAMSIZ);
-    fd = socket(PF_PACKET, SOCK_DGRAM, 0);
-    if (fd < 0) {
+    if ((fd = socket(PF_PACKET, SOCK_DGRAM, 0)) < 0) {
         syslog(LOG_ERR, "Could not open up socket");
         return -1;
     }
 
+    strncpy(ifr.ifr_name, layer->nl_ifname, IFNAMSIZ);
     if (ioctl(fd, SIOCGIFFLAGS, &ifr)) {
         syslog(LOG_ERR, "SIOCGIFFLAGS");
         close(fd);
@@ -350,7 +357,9 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer, int phys,
     if ((err = pcap_activate(layer->pcap)) != 0) {
         syslog(LOG_ERR, "PCAP activate failed: %d\n", err);
         return -1;
-    } else if (pcap_setnonblock(layer->pcap, 1, errbuf) != 0) {
+    }
+
+    if (pcap_setnonblock(layer->pcap, 1, errbuf) != 0) {
         syslog(LOG_ERR, "PCAP setnonblock failed: %s\n", errbuf);
         return -1;
     }
@@ -379,14 +388,18 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
     0x00, // it_version
     0x00, // it_pad
 
-    0x0d, 0x00, // it_len
+    0x0d,
+    0x00, // it_len
 
     // it_present
     // bits 7-0, 15-8, 23-16, 31-24
     // set CHANNEL: bit 3
     // set TX_FLAGS: bit 15
     // set MCS: bit 19
-    0x08, 0x80, 0x08, 0x00,
+    0x08,
+    0x80,
+    0x08,
+    0x00,
 
     // CHANNEL
     // u16 frequency (MHz), u16 flags
@@ -394,12 +407,16 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
     // flags 7-0, 15-8
     // set Dynamic CCK-OFDM channel: bit 10
     // set 2GHz channel: bit 7
-    0x00, 0x00, 0x80, 0x04,
+    0x00,
+    0x00,
+    0x80,
+    0x04,
 
     // TX_FLAGS
     // u16 flags 7-0, 15-8
     // set NO_ACK: bit 3
-    0x08, 0x00,
+    0x08,
+    0x00,
 
     // MCS
     // u8 known, u8 flags, u8 mcs
@@ -408,13 +425,8 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
     (IEEE80211_RADIOTAP_MCS_HAVE_MCS | IEEE80211_RADIOTAP_MCS_HAVE_BW |
      IEEE80211_RADIOTAP_MCS_HAVE_GI | IEEE80211_RADIOTAP_MCS_HAVE_STBC |
      IEEE80211_RADIOTAP_MCS_HAVE_FEC),
-    0x10, 0x00,
-
-    // IEEE802.11 header
-    0x40, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00,
-    // RATES
-    0x01, 0x04, 0x02, 0x04, 0x0B, 0x16, 0x32, 0x08, 0x0C, 0x12, 0x18, 0x24, 0x30, 0x48, 0x60, 0x6C
+    0x10,
+    0x00,
 };
 
 int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
@@ -539,15 +551,19 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
         payload += 4;
         payload_len -= 4;
 
+        if (payload_len < 0)
+            return RS_CHANNEL_LAYER_EOF;
+
         uint8_t *payload_copy = calloc(payload_len, sizeof(uint8_t));
         memcpy(payload_copy, payload, payload_len);
 
         struct rs_channel_layer_pcap_packet pcap_packet;
         if (rs_channel_layer_pcap_packet_unpack(&pcap_packet, payload_copy,
                                                 payload_copy, payload_len)) {
-            syslog(
-                LOG_DEBUG,
-                "Received packet which could not be unpacked on channel layer (%db)", payload_len);
+            syslog(LOG_DEBUG,
+                   "Received packet which could not be unpacked on channel "
+                   "layer (%db)",
+                   payload_len);
             free(payload_copy);
             return RS_CHANNEL_LAYER_IRR;
         }

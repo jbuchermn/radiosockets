@@ -7,9 +7,9 @@
 #include <unistd.h>
 
 #include "rs_channel_layer_pcap.h"
-#include "rs_port_layer.h"
 #include "rs_command_loop.h"
 #include "rs_packet.h"
+#include "rs_port_layer.h"
 #include "rs_server_state.h"
 
 static struct rs_server_state state;
@@ -21,7 +21,7 @@ void signal_handler(int sig_num) {
 
 int main() {
     int phys = 1;
-    char* ifname = "wlan1mon";
+    char *ifname = "wlp0s20f0u1";
 
     setlogmask(LOG_UPTO(LOG_DEBUG));
     /* setlogmask(LOG_UPTO(LOG_NOTICE)); */
@@ -42,7 +42,7 @@ int main() {
         return 0;
     }
 
-    struct rs_channel_layer* layer1s[1] = { &layer1_pcap.super };
+    struct rs_channel_layer *layer1s[1] = {&layer1_pcap.super};
 
     /* port layer */
     struct rs_port_layer layer2;
@@ -54,9 +54,9 @@ int main() {
     while (state.running) {
         rs_command_loop_run(&command_loop, &state);
 
-        struct rs_packet* packet;
+        struct rs_packet *packet;
         rs_port_id_t port;
-        while(!rs_port_layer_receive(&layer2, &packet, &port)){
+        while (!rs_port_layer_receive(&layer2, &packet, &port)) {
             printf("R");
         }
         rs_port_layer_main(&layer2, NULL);

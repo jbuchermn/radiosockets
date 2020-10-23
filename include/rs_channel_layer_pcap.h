@@ -1,8 +1,10 @@
 #ifndef RS_CHANNEL_LAYER_PCAP_H
 #define RS_CHANNEL_LAYER_PCAP_H
 
-#include "radiotap-library/radiotap.h"
 #include <pcap/pcap.h>
+#include <linux/if.h>
+
+#include "radiotap-library/radiotap.h"
 
 #include "rs_channel_layer.h"
 #include "rs_packet.h"
@@ -24,7 +26,7 @@ struct rs_channel_layer_pcap {
 
     uint32_t nl_wiphy;
     uint32_t nl_if;
-    char nl_ifname[10];
+    char nl_ifname[IFNAMSIZ];
 
     uint16_t on_channel; // last two bytes of rs_channel_t
 };
