@@ -62,6 +62,7 @@ CMD_EXIT = 13
 
 
 class CommandPayload(ctypes.Structure):
+    _pack_ = 1
     _fields_ = [("id", ctypes.c_uint32),
                 ("command", ctypes.c_uint32),
                 ("payload_int", ctypes.ARRAY(ctypes.c_int, CMD_PAYLOAD_MAX)),
@@ -84,6 +85,7 @@ class CommandPayload(ctypes.Structure):
 
 
 class ResponsePayload(ctypes.Structure):
+    _pack_ = 1
     _fields_ = [("id", ctypes.c_uint32),
                 ("payload_int", ctypes.ARRAY(ctypes.c_int, CMD_PAYLOAD_MAX)),
                 ("payload_char", ctypes.ARRAY(ctypes.c_char, CMD_PAYLOAD_MAX)),

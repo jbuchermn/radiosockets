@@ -9,12 +9,10 @@ struct rs_port_layer;
 struct rs_command_loop {
     int socket_fd;
 
-    unsigned int buffer_size;
     uint8_t *buffer;
 };
 
-void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file,
-                          unsigned int buffer_size);
+void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file);
 void rs_command_loop_run(struct rs_command_loop *loop,
                          struct rs_server_state *state);
 void rs_command_loop_destroy(struct rs_command_loop *loop);

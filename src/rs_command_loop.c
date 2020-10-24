@@ -43,17 +43,15 @@ static void send_msg(int sock, void *msg, uint32_t msgsize) {
     }
 }
 
-void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file,
-                          unsigned int buffer_size) {
-    loop->buffer_size = buffer_size;
-    loop->buffer = calloc(buffer_size, sizeof(uint8_t));
+void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file) {
+    loop->buffer = calloc(1, sizeof(struct rs_command_payload));
 
     /* create socket */
     if ((loop->socket_fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
         syslog(LOG_ERR, "create_socket: Socket creation failed");
         exit(1);
     }
-    syslog(LOG_NOTICE, "create_socket: Socket created");
+    syslog(LOG_DEBUG, "create_socket: Socket created");
 
     /* setup socket configuration */
     struct sockaddr_un addr;
@@ -71,13 +69,13 @@ void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file,
         exit(1);
     }
     listen(loop->socket_fd, 3);
-    syslog(LOG_NOTICE, "create_socket: Bind done");
+    syslog(LOG_DEBUG, "create_socket: Bind done");
 
     /* put socket into nonblocking mode */
     int flags = fcntl(loop->socket_fd, F_GETFL);
     fcntl(loop->socket_fd, F_SETFL, flags | O_NONBLOCK);
 
-    syslog(LOG_NOTICE, "create_socket: Server listening on socket");
+    syslog(LOG_DEBUG, "create_socket: Server listening on socket");
 }
 
 void rs_command_loop_destroy(struct rs_command_loop *loop) {
@@ -99,17 +97,23 @@ void rs_command_loop_run(struct rs_command_loop *loop,
         return;
     }
 
-    syslog(LOG_NOTICE, "Received command...");
+    syslog(LOG_DEBUG, "Received connection...");
 
-    bzero(loop->buffer, loop->buffer_size);
     int nread;
-    while ((nread = read(client_socket_fd, loop->buffer, loop->buffer_size)) >
-           0) {
+    while ((nread = read(client_socket_fd, loop->buffer,
+                         sizeof(struct rs_command_payload))) > 0) {
+
+        if (nread != sizeof(struct rs_command_payload)) {
+            printf("%d != %ld\n", nread, sizeof(struct rs_command_payload));
+            syslog(LOG_ERR, "Skipping: Invalid command size");
+            continue;
+        }
+
+
         struct rs_command_payload *p =
             (struct rs_command_payload *)loop->buffer;
 
-        syslog(LOG_NOTICE, "...id=%d, command=%d", p->id, p->command);
-
+        syslog(LOG_DEBUG, "Received valid command...");
         struct rs_command_response_payload response;
         response.id = p->id;
 
@@ -119,4 +123,5 @@ void rs_command_loop_run(struct rs_command_loop *loop,
                  sizeof(struct rs_command_response_payload));
     }
     close(client_socket_fd);
+    syslog(LOG_DEBUG, "...closed connection");
 }

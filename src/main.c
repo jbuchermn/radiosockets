@@ -90,6 +90,7 @@ int main(int argc, char **argv) {
     /* set up log */
     setlogmask(LOG_UPTO(LOG_DEBUG));
     /* setlogmask(LOG_UPTO(LOG_NOTICE)); */
+
     openlog("radiosocketd", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
     syslog(LOG_NOTICE, "Starting radiosocketd...");
 
@@ -110,7 +111,7 @@ int main(int argc, char **argv) {
 
     /* set up command loop */
     struct rs_command_loop command_loop;
-    rs_command_loop_init(&command_loop, sock_file, 512);
+    rs_command_loop_init(&command_loop, sock_file);
 
     /* main loop */
     signal(SIGINT, signal_handler);
