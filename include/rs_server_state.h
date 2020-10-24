@@ -8,7 +8,7 @@ struct rs_channel_layer;
 struct rs_port_layer;
 
 /* "MAC" adress */
-typedef uint16_t rs_server_id_t;
+typedef uint8_t rs_server_id_t;
 
 struct rs_server_state {
     int running;

@@ -13,7 +13,7 @@
  *       |    |   |    |
  *       |    |   +----+-- Different channels (ch_n)
  *       |    +----------- for now fixed at 0x0
- *       +---------------- Different implementations (ch_base)
+ *       +---------------- Different implementations (ch_base - nonzero)
  */
 typedef uint16_t rs_channel_t;
 

@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
 
     /* set up port layer */
     struct rs_port_layer layer2;
-    rs_port_layer_init(&layer2, layer1s, 1, default_channel);
+    rs_port_layer_init(&layer2, &state, layer1s, 1, default_channel);
     state.port_layer = &layer2;
 
     /* set up command loop */

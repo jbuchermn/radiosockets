@@ -18,22 +18,32 @@ static void handle_command(struct rs_command_payload *command,
     if (command->command == RS_COMMAND_LOOP_CMD_EXIT) {
         state->running = 0;
     } else if (command->command == RS_COMMAND_LOOP_CMD_PORT_STAT) {
-        rs_port_id_t port = command->payload_int[0];
-
-        struct rs_port_channel_info *info;
-        if (rs_port_layer_get_channel_info(state->port_layer, port, &info)) {
-            syslog(LOG_ERR, "CMD_PORT_STAT: Invalid port");
-        } else {
-            response->payload_double[0] = rs_stat_current(&info->tx_stat_bits);
-            response->payload_double[1] =
-                rs_stat_current(&info->other_rx_stat_bits);
-            response->payload_double[2] =
-                rs_stat_current(&info->other_rx_stat_missed);
-
-            response->payload_double[3] = rs_stat_current(&info->rx_stat_bits);
-            response->payload_double[4] =
-                rs_stat_current(&info->rx_stat_missed);
-        }
+        /* rs_port_id_t port = command->payload_int[0]; */
+        /*  */
+        /* struct rs_port_channel_info *info; */
+        /* if (rs_port_layer_get_channel_info(state->port_layer, port, &info)) {
+         */
+        /*     syslog(LOG_ERR, "CMD_PORT_STAT: Invalid port"); */
+        /* } else { */
+        /*     response->payload_double[0] =
+         * rs_stat_current(&info->tx_stat_bits); */
+        /*     response->payload_double[1] = */
+        /*         rs_stat_current(&info->other_rx_stat_bits); */
+        /*     response->payload_double[2] = */
+        /*         rs_stat_current(&info->other_rx_stat_missed); */
+        /*  */
+        /*     response->payload_double[3] =
+         * rs_stat_current(&info->rx_stat_bits); */
+        /*     response->payload_double[4] = */
+        /*         rs_stat_current(&info->rx_stat_missed); */
+        /* } */
+    } else if (command->command == RS_COMMAND_LOOP_CMD_OPEN_PORT) {
+        int id = (uint8_t)command->payload_int[0];
+        int channel = (rs_channel_t)command->payload_int[1];
+        rs_port_id_t opened_id;
+        response->payload_int[0] =
+            rs_port_layer_open_port(state->port_layer, id, &opened_id, channel);
+        response->payload_int[1] = opened_id;
     }
 }
 
@@ -104,7 +114,6 @@ void rs_command_loop_run(struct rs_command_loop *loop,
         if (nread != sizeof(struct rs_command_payload)) {
             continue;
         }
-
 
         struct rs_command_payload *p =
             (struct rs_command_payload *)loop->buffer;

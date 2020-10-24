@@ -372,7 +372,8 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     }
 
     /* set filter */
-    assert(sizeof(rs_server_id_t) == 2);
+    /* assert(sizeof(rs_server_id_t) == 2); */
+    assert(sizeof(rs_server_id_t) == 1);
     int link_encap = pcap_datalink(layer->pcap);
     struct bpf_program bpfprogram;
     char program[200];
@@ -380,11 +381,11 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     switch (link_encap) {
     case DLT_IEEE802_11_RADIO:
         sprintf(program, "ether src %.12llx && ether dst %.12llx",
-                (unsigned long long)0x112233440000 |
-                    ((layer->super.server->other_id >> 8) << 8) |
+                (unsigned long long)0x112233445500 |
+                    /* ((layer->super.server->other_id >> 8) << 8) | */
                     (layer->super.server->other_id & 0xFF),
-                (unsigned long long)0x112233440000 |
-                    ((layer->super.server->own_id >> 8) << 8) |
+                (unsigned long long)0x112233445500 |
+                    /* ((layer->super.server->own_id >> 8) << 8) | */
                     (layer->super.server->own_id & 0xFF));
         break;
 
@@ -524,12 +525,13 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
 
     memcpy(tx_ptr, ieee80211_header, sizeof(ieee80211_header));
 
-    assert(sizeof(rs_server_id_t) == 2);
+    /* assert(sizeof(rs_server_id_t) == 2); */
+    assert(sizeof(rs_server_id_t) == 1);
     // src mac
-    tx_ptr[14] = layer->super.server->own_id >> 8;
+    /* tx_ptr[14] = layer->super.server->own_id >> 8; */
     tx_ptr[15] = layer->super.server->own_id & 0xFF;
     // dst mac
-    tx_ptr[20] = layer->super.server->other_id >> 8;
+    /* tx_ptr[20] = layer->super.server->other_id >> 8; */
     tx_ptr[21] = layer->super.server->other_id & 0xFF;
 
     tx_ptr += sizeof(ieee80211_header);
@@ -609,8 +611,8 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             }
         }
 
-        syslog(LOG_DEBUG, "rate: %d known %02x flags %02x mcs %d", rate,
-               mcs_known, mcs_flags, mcs);
+        /* syslog(LOG_DEBUG, "rate: %d known %02x flags %02x mcs %d", rate, */
+        /*        mcs_known, mcs_flags, mcs); */
         if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) {
             syslog(LOG_DEBUG, "Received bad FCS packet");
             return RS_CHANNEL_LAYER_BADFCS;

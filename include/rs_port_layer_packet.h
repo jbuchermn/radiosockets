@@ -3,7 +3,7 @@
 
 #include "rs_port_layer.h"
 
-#define RS_PORT_LAYER_COMMAND_LENGTH 4
+#define RS_PORT_LAYER_COMMAND_LENGTH 8
 
 struct rs_port_layer_packet {
     struct rs_packet super;

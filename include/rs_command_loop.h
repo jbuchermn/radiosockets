@@ -22,6 +22,7 @@ void rs_command_loop_destroy(struct rs_command_loop *loop);
 #define RS_COMMAND_LOOP_PAYLOAD_MAX 100
 
 #define RS_COMMAND_LOOP_CMD_PORT_STAT 1
+#define RS_COMMAND_LOOP_CMD_OPEN_PORT 2
 #define RS_COMMAND_LOOP_CMD_EXIT 13
 
 struct rs_command_payload {
