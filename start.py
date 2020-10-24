@@ -179,7 +179,9 @@ if __name__ == '__main__':
             response = connection.command(
                 CommandPayload(CMD_PORT_STAT, [0], "", []))
             if response is not None:
-                print(response.get_payload_double()[:5])
+                p = response.get_payload_double()
+                print("TX=%7.2fkbps (reported: %7.2fkbps with loss: %2d%%) RX=%7.2fkbps with loss: %2d%%" %
+                      (p[0]/1000, p[1]/1000, p[2] * 100, p[3]/1000, p[4] * 100))
 
             time.sleep(0.5)
     finally:

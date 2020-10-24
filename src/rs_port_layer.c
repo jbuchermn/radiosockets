@@ -242,7 +242,7 @@ retry:
             rs_stat_register(&info->other_rx_stat_bits,
                              1000 * (double)unpacked.rx_bitrate);
             rs_stat_register(&info->other_rx_stat_missed,
-                             0.0001 * (double)unpacked.rx_bitrate);
+                             0.0001 * (double)unpacked.rx_missed);
             rs_stat_register(&info->other_rx_stat_dt,
                              0.0001 * (double)unpacked.rx_dt);
 
