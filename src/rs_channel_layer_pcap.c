@@ -380,9 +380,11 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     switch (link_encap) {
     case DLT_IEEE802_11_RADIO:
         sprintf(program, "ether src %.12llx && ether dst %.12llx",
-                0x112233440000 | ((layer->super.server->other_id >> 8) << 8) |
+                (unsigned long long)0x112233440000 |
+                    ((layer->super.server->other_id >> 8) << 8) |
                     (layer->super.server->other_id & 0xFF),
-                0x112233440000 | ((layer->super.server->own_id >> 8) << 8) |
+                (unsigned long long)0x112233440000 |
+                    ((layer->super.server->own_id >> 8) << 8) |
                     (layer->super.server->own_id & 0xFF));
         break;
 
@@ -461,13 +463,32 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
 
 static uint8_t ieee80211_header[] __attribute__((unused)) = {
     // IEEE802.11 header
-    0x08, 0x01, 0x00, 0x00,
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    0x08,
+    0x01,
+    0x00,
+    0x00,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
     // src mac
-    0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+    0x11,
+    0x22,
+    0x33,
+    0x44,
+    0x55,
+    0x66,
     // dst mac
-    0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
-    0x00, 0x00,
+    0x11,
+    0x22,
+    0x33,
+    0x44,
+    0x55,
+    0x66,
+    0x00,
+    0x00,
 };
 
 int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
@@ -479,7 +500,7 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
         syslog(LOG_ERR, "Attempting to send packet through wrong channel");
         return -1;
     }
-    nl_set_channel(layer, 0x00FF & channel);
+    nl_set_channel(layer, rs_channel_layer_extract(&layer->super, channel));
 
     uint8_t tx_buf[RS_PCAP_TX_BUFSIZE];
     uint8_t *tx_ptr = tx_buf;
@@ -538,7 +559,7 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
         return -1;
     }
     if (*channel) {
-        nl_set_channel(layer, 0x00FF & *channel);
+        nl_set_channel(layer, rs_channel_layer_extract(&layer->super, *channel));
     }
 
     struct pcap_pkthdr header;
@@ -567,14 +588,14 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             case IEEE80211_RADIOTAP_FLAGS:
                 flags = *(uint8_t *)(it.this_arg);
                 break;
-                case IEEE80211_RADIOTAP_MCS:
-                    mcs_known = *(uint8_t *)(it.this_arg);
-                    mcs_flags = *(((uint8_t *)(it.this_arg)) + 1);
-                    mcs = *(((uint8_t *)(it.this_arg)) + 2);
-                    break;
-                case IEEE80211_RADIOTAP_RATE:
-                    rate = *(uint8_t *)(it.this_arg);
-                    break;
+            case IEEE80211_RADIOTAP_MCS:
+                mcs_known = *(uint8_t *)(it.this_arg);
+                mcs_flags = *(((uint8_t *)(it.this_arg)) + 1);
+                mcs = *(((uint8_t *)(it.this_arg)) + 2);
+                break;
+            case IEEE80211_RADIOTAP_RATE:
+                rate = *(uint8_t *)(it.this_arg);
+                break;
                 /* case IEEE80211_RADIOTAP_CHANNEL: */
                 /*     chan = get_unaligned((uint16_t *)(it.this_arg)); */
                 /*     chan_flags = get_unaligned(((uint16_t *)(it.this_arg)) +
@@ -588,7 +609,8 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             }
         }
 
-        syslog(LOG_DEBUG, "rate: %d known %02x flags %02x mcs %d", rate, mcs_known, mcs_flags, mcs);
+        syslog(LOG_DEBUG, "rate: %d known %02x flags %02x mcs %d", rate,
+               mcs_known, mcs_flags, mcs);
         if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) {
             syslog(LOG_DEBUG, "Received bad FCS packet");
             return RS_CHANNEL_LAYER_BADFCS;

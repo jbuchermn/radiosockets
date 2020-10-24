@@ -97,15 +97,11 @@ void rs_command_loop_run(struct rs_command_loop *loop,
         return;
     }
 
-    syslog(LOG_DEBUG, "Received connection...");
-
     int nread;
     while ((nread = read(client_socket_fd, loop->buffer,
                          sizeof(struct rs_command_payload))) > 0) {
 
         if (nread != sizeof(struct rs_command_payload)) {
-            printf("%d != %ld\n", nread, sizeof(struct rs_command_payload));
-            syslog(LOG_ERR, "Skipping: Invalid command size");
             continue;
         }
 
@@ -113,7 +109,6 @@ void rs_command_loop_run(struct rs_command_loop *loop,
         struct rs_command_payload *p =
             (struct rs_command_payload *)loop->buffer;
 
-        syslog(LOG_DEBUG, "Received valid command...");
         struct rs_command_response_payload response;
         response.id = p->id;
 
@@ -123,5 +118,4 @@ void rs_command_loop_run(struct rs_command_loop *loop,
                  sizeof(struct rs_command_response_payload));
     }
     close(client_socket_fd);
-    syslog(LOG_DEBUG, "...closed connection");
 }

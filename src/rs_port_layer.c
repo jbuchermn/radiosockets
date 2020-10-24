@@ -88,7 +88,7 @@ static int _retrieve(struct rs_port_layer *layer, rs_port_id_t port_id,
     }
 
     if (!ch) {
-        syslog(LOG_ERR, "Could not find layer for channel %d", port_id);
+        syslog(LOG_ERR, "Could not find layer for port %d", port_id);
         return -1;
     }
 
@@ -102,7 +102,7 @@ static int _retrieve(struct rs_port_layer *layer, rs_port_id_t port_id,
     }
 
     if (!in) {
-        syslog(LOG_ERR, "Could not find info for channel %d", port_id);
+        syslog(LOG_ERR, "Could not find info for port %d", port_id);
         return -1;
     }
 
@@ -128,7 +128,7 @@ static int _transmit(struct rs_port_layer *layer,
                      rs_channel_t channel, struct rs_port_channel_info *info) {
 
     packet->rx_bitrate =
-        (uint16_t)(rs_stat_current(&info->rx_stat_bits) / 1000);
+        (uint16_t)(rs_stat_current(&info->rx_stat_bits));
     packet->rx_missed =
         (uint16_t)(rs_stat_current(&info->rx_stat_missed) * 10000);
     packet->rx_dt = (uint16_t)(rs_stat_current(&info->rx_stat_dt));
@@ -194,7 +194,7 @@ static int _receive(struct rs_port_layer *layer, struct rs_packet **packet_ret,
             info = layer->infos[i_ch] + i;
     }
     if (!info) {
-        syslog(LOG_ERR, "Could not info layer for channel %d", chan);
+        syslog(LOG_ERR, "Could not find info for channel %d", chan);
         return -1;
     }
 
@@ -240,11 +240,11 @@ retry:
             info->rx_last_seq = unpacked.seq;
 
             rs_stat_register(&info->other_rx_stat_bits,
-                             1000 * (double)unpacked.rx_bitrate);
+                             (double)unpacked.rx_bitrate);
             rs_stat_register(&info->other_rx_stat_missed,
                              0.0001 * (double)unpacked.rx_missed);
             rs_stat_register(&info->other_rx_stat_dt,
-                             0.0001 * (double)unpacked.rx_dt);
+                             (double)unpacked.rx_dt);
 
             if (unpacked.port == 0) {
                 /* Received a command packet */

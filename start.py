@@ -5,7 +5,7 @@ import time
 import ctypes
 from subprocess import Popen, PIPE
 
-CONFIG_SOCKET = "/tmp/radiosocketd.sock"
+CONFIG_SOCKET = "/tmp/radiosocketd_%d.sock" % os.getpid()
 
 
 def cmd(cmd):
@@ -153,9 +153,18 @@ if __name__ == '__main__':
         phys = phys[int(input("Index? "))]
 
     arg_p = phys.idx
-    arg_default_channel = "0x1006"
-    arg_own = "0xDD00" if 'pi-up' in os.uname()[1] else "0xFF00"
-    arg_other = "0xFF00" if 'pi-up' in os.uname()[1] else "0xDD00"
+    arg_default_channel = "0x100B"
+
+    is_up = 'pi-up' in os.uname()[1]
+    if len(sys.argv) > 1 and sys.argv[1] == "fake-up":
+        is_up = True
+    if is_up:
+        arg_own = "0xDD00"
+        arg_other = "0xFF00"
+    else:
+        arg_own = "0xFF00"
+        arg_other = "0xDD00"
+
     arg_ifname = "wlan%dmon" % phys.idx
     if "8188eu" in phys.driver:
         print("Detected patched 8188eu driver => using existing interface...")
@@ -164,8 +173,8 @@ if __name__ == '__main__':
             exit(1)
         arg_ifname = phys.interfaces[0]
 
-    cmd = "sudo ./radiosocketd -p %d -i %s -a %s -b %s -c %s" % (
-        arg_p, arg_ifname, arg_own, arg_other, arg_default_channel)
+    cmd = "sudo ./radiosocketd -s %s -p %d -i %s -a %s -b %s -c %s" % (
+        CONFIG_SOCKET, arg_p, arg_ifname, arg_own, arg_other, arg_default_channel)
     print("Executing %s" % cmd)
     input("Yes? ")
 
@@ -180,8 +189,8 @@ if __name__ == '__main__':
                 CommandPayload(CMD_PORT_STAT, [0], "", []))
             if response is not None:
                 p = response.get_payload_double()
-                print("TX=%7.2fkbps (reported: %7.2fkbps with loss: %2d%%) RX=%7.2fkbps with loss: %2d%%" %
-                      (p[0]/1000, p[1]/1000, p[2] * 100, p[3]/1000, p[4] * 100))
+                print("TX=%8.2fkbps (reported: %8.2fkbps with loss: %2d%%) RX=%8.2fkbps with loss: %2d%%" %
+                      (p[0]/1000, p[1]/1000, p[2] * 100 if p[1] > 0 else 100, p[3]/1000, p[4] * 100 if p[3] > 0 else 100))
 
             time.sleep(0.5)
     finally:
@@ -189,5 +198,3 @@ if __name__ == '__main__':
             connection.command(CommandPayload(CMD_EXIT, [0], "", []))
         except:
             pass
-
-

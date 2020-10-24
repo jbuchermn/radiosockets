@@ -12,7 +12,7 @@
  * MSB xxxx xxxx xxxx xxxx LSB
  *       |    |   |    |
  *       |    |   +----+-- Different channels (ch_n)
- *       |    +----------- for now fixed at 0x00
+ *       |    +----------- for now fixed at 0x0
  *       +---------------- Different implementations (ch_base)
  */
 typedef uint16_t rs_channel_t;
@@ -78,5 +78,7 @@ static inline int rs_channel_layer_ch_n(struct rs_channel_layer *layer) {
     return (layer->vtable->ch_n)(layer);
 }
 rs_channel_t rs_channel_layer_ch(struct rs_channel_layer *layer, int i);
+uint16_t rs_channel_layer_extract(struct rs_channel_layer *layer,
+                                  rs_channel_t channel);
 
 #endif

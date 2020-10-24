@@ -64,7 +64,7 @@ struct rs_port {
 
 #define RS_PORT_CMD_DUMMY_SIZE 1
 #define RS_PORT_CMD_HEARTBEAT 0xFD
-#define RS_PORT_CMD_HEARTBEAT_MSEC 50
+#define RS_PORT_CMD_HEARTBEAT_MSEC 20
 
 struct rs_port_channel_info {
     rs_channel_t id;
