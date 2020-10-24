@@ -76,13 +76,21 @@ struct rs_port_channel_info {
     rs_port_seq_t rx_last_seq;
 
     struct rs_stat tx_stat_bits;
-    struct rs_stat rx_stat_bits;
-
     struct rs_stat tx_stat_packets;
-    struct rs_stat rx_stat_packets;
 
-    struct rs_stat rx_stat_missed_packets;
+    struct rs_stat rx_stat_bits;
+    struct rs_stat rx_stat_packets;
+    struct rs_stat rx_stat_missed;
     struct rs_stat rx_stat_dt;
+
+    struct rs_stat other_rx_stat_bits;
+    struct rs_stat other_rx_stat_packets;
+    struct rs_stat other_rx_stat_missed;
+    struct rs_stat other_rx_stat_dt;
 };
+
+int rs_port_layer_get_channel_info(struct rs_port_layer *layer,
+                                    rs_port_id_t port,
+                                    struct rs_port_channel_info **info);
 
 #endif

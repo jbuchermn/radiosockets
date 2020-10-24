@@ -14,11 +14,13 @@ struct rs_stat {
         RS_STAT_AGG_COUNT,
     } aggregate;
 
+    // [................d....................]
     // [...last_data...]|[data / n_data...000]
     //                  t0
-    double last_data[RS_STAT_N];
+    double d[2 * RS_STAT_N];
+    double* last_data;
     struct timespec t0;
-    double data[RS_STAT_N];
+    double* data;
     int n_data[RS_STAT_N];
 
     double norm_factor;
@@ -32,5 +34,6 @@ void rs_stat_register(struct rs_stat *stat, double value);
 void rs_stat_flush(struct rs_stat *stat);
 
 void rs_stat_printf(struct rs_stat *stat);
+double rs_stat_current(struct rs_stat* stat);
 
 #endif

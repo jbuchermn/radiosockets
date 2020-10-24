@@ -34,18 +34,27 @@ void rs_port_layer_init(struct rs_port_layer *layer,
              j++) {
             layer->infos[i][j].id =
                 rs_channel_layer_ch(layer->channel_layers[i], j);
+
             rs_stat_init(&layer->infos[i][j].tx_stat_bits, RS_STAT_AGG_SUM,
                          "TX", "bps", 1000. / RS_STAT_DT_MSEC);
-            rs_stat_init(&layer->infos[i][j].rx_stat_bits, RS_STAT_AGG_SUM,
-                         "RX", "bps", 1000. / RS_STAT_DT_MSEC);
             rs_stat_init(&layer->infos[i][j].tx_stat_packets, RS_STAT_AGG_COUNT,
                          "TX", "pps", 1000. / RS_STAT_DT_MSEC);
+
+            rs_stat_init(&layer->infos[i][j].rx_stat_bits, RS_STAT_AGG_SUM,
+                         "RX", "bps", 1000. / RS_STAT_DT_MSEC);
             rs_stat_init(&layer->infos[i][j].rx_stat_packets, RS_STAT_AGG_COUNT,
                          "RX", "pps", 1000. / RS_STAT_DT_MSEC);
             rs_stat_init(&layer->infos[i][j].rx_stat_dt, RS_STAT_AGG_AVG,
                          "RX dt", "ms", 1.);
-            rs_stat_init(&layer->infos[i][j].rx_stat_missed_packets,
-                         RS_STAT_AGG_AVG, "RX miss", "", 1.);
+            rs_stat_init(&layer->infos[i][j].rx_stat_missed, RS_STAT_AGG_AVG,
+                         "RX miss", "", 1.);
+
+            rs_stat_init(&layer->infos[i][j].other_rx_stat_bits,
+                         RS_STAT_AGG_AVG, "-RX", "bps", 1.);
+            rs_stat_init(&layer->infos[i][j].other_rx_stat_dt, RS_STAT_AGG_AVG,
+                         "-RX dt", "ms", 1.);
+            rs_stat_init(&layer->infos[i][j].other_rx_stat_missed,
+                         RS_STAT_AGG_AVG, "-RX miss", "", 1.);
         }
     }
 }
@@ -113,13 +122,20 @@ void rs_port_layer_destroy(struct rs_port_layer *layer) {
     layer->infos = NULL;
 }
 
-static int _transmit(struct rs_port_layer *layer, struct rs_packet *packet,
+static int _transmit(struct rs_port_layer *layer,
+                     struct rs_port_layer_packet *packet,
                      struct rs_channel_layer *channel_layer,
                      rs_channel_t channel, struct rs_port_channel_info *info) {
 
+    packet->rx_bitrate =
+        (uint16_t)(rs_stat_current(&info->rx_stat_bits) / 1000);
+    packet->rx_missed =
+        (uint16_t)(rs_stat_current(&info->rx_stat_missed) * 10000);
+    packet->rx_dt = (uint16_t)(rs_stat_current(&info->rx_stat_dt));
+
     int bytes;
-    if ((bytes = rs_channel_layer_transmit(channel_layer, packet, channel)) >
-        0) {
+    if ((bytes = rs_channel_layer_transmit(channel_layer, &packet->super,
+                                           channel)) > 0) {
         info->tx_last_seq++;
         clock_gettime(CLOCK_REALTIME, &info->tx_last_ts);
 
@@ -150,7 +166,7 @@ int rs_port_layer_transmit(struct rs_port_layer *layer,
     packet.command[0] = RS_PORT_CMD_HEARTBEAT;
     packet.seq = info->tx_last_seq + 1;
 
-    int res = _transmit(layer, &packet.super, ch, p->bound_channel, info);
+    int res = _transmit(layer, &packet, ch, p->bound_channel, info);
 
     rs_packet_destroy(&packet.super);
     return res;
@@ -202,6 +218,7 @@ retry:
 
             /* The same packet is possibly received multiple times */
             if (unpacked.seq == info->rx_last_seq) {
+                syslog(LOG_DEBUG, "Duplicate packet");
                 rs_packet_destroy(&unpacked.super);
                 goto retry;
             }
@@ -216,11 +233,18 @@ retry:
             rs_stat_register(&info->rx_stat_bits, 8 * bytes);
             rs_stat_register(&info->rx_stat_dt, dt_msec);
             for (int i = 0; i < unpacked.seq - info->rx_last_seq - 1; i++)
-                rs_stat_register(&info->rx_stat_missed_packets, 1.0);
-            rs_stat_register(&info->rx_stat_missed_packets, 0.0);
+                rs_stat_register(&info->rx_stat_missed, 1.0);
+            rs_stat_register(&info->rx_stat_missed, 0.0);
 
             info->rx_last_ts = now;
             info->rx_last_seq = unpacked.seq;
+
+            rs_stat_register(&info->other_rx_stat_bits,
+                             1000 * (double)unpacked.rx_bitrate);
+            rs_stat_register(&info->other_rx_stat_missed,
+                             0.0001 * (double)unpacked.rx_bitrate);
+            rs_stat_register(&info->other_rx_stat_dt,
+                             0.0001 * (double)unpacked.rx_dt);
 
             if (unpacked.port == 0) {
                 /* Received a command packet */
@@ -285,7 +309,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
         }
     } else {
         /*
-         * For now only a heartbeat through command channel
+         * For now only a heartbeat through command port
          */
 
         struct timespec now;
@@ -301,19 +325,15 @@ void rs_port_layer_main(struct rs_port_layer *layer,
             packet.command[0] = RS_PORT_CMD_HEARTBEAT;
             packet.seq = info->tx_last_seq + 1;
 
-            _transmit(layer, &packet.super, ch, layer->ports[0].bound_channel,
-                      info);
+            _transmit(layer, &packet, ch, layer->ports[0].bound_channel, info);
 
             rs_packet_destroy(&packet.super);
-
-            /* Temporary: Print out statistics */
-            printf("\033[2J\n");
-            rs_stat_printf(&info->tx_stat_bits);
-            rs_stat_printf(&info->tx_stat_packets);
-            rs_stat_printf(&info->rx_stat_bits);
-            rs_stat_printf(&info->rx_stat_packets);
-            rs_stat_printf(&info->rx_stat_dt);
-            rs_stat_printf(&info->rx_stat_missed_packets);
         }
     }
+}
+
+int rs_port_layer_get_channel_info(struct rs_port_layer *layer,
+                                   rs_port_id_t port,
+                                   struct rs_port_channel_info **info) {
+    return _retrieve(layer, port, NULL, NULL, info);
 }

@@ -551,10 +551,10 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             header.caplen, NULL);
 
         int flags = -1;
-        /* int mcs_known = -1; */
-        /* int mcs_flags = -1; */
-        /* int mcs = -1; */
-        /* int rate = -1; */
+        int mcs_known = -1;
+        int mcs_flags = -1;
+        int mcs = -1;
+        int rate = -1;
         /* int chan = -1; */
         /* int chan_flags = -1; */
         /* int antenna = -1; */
@@ -567,14 +567,14 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             case IEEE80211_RADIOTAP_FLAGS:
                 flags = *(uint8_t *)(it.this_arg);
                 break;
-                /* case IEEE80211_RADIOTAP_MCS: */
-                /*     mcs_known = *(uint8_t *)(it.this_arg); */
-                /*     mcs_flags = *(((uint8_t *)(it.this_arg)) + 1); */
-                /*     mcs = *(((uint8_t *)(it.this_arg)) + 2); */
-                /*     break; */
-                /* case IEEE80211_RADIOTAP_RATE: */
-                /*     rate = *(uint8_t *)(it.this_arg); */
-                /*     break; */
+                case IEEE80211_RADIOTAP_MCS:
+                    mcs_known = *(uint8_t *)(it.this_arg);
+                    mcs_flags = *(((uint8_t *)(it.this_arg)) + 1);
+                    mcs = *(((uint8_t *)(it.this_arg)) + 2);
+                    break;
+                case IEEE80211_RADIOTAP_RATE:
+                    rate = *(uint8_t *)(it.this_arg);
+                    break;
                 /* case IEEE80211_RADIOTAP_CHANNEL: */
                 /*     chan = get_unaligned((uint16_t *)(it.this_arg)); */
                 /*     chan_flags = get_unaligned(((uint16_t *)(it.this_arg)) +
@@ -588,6 +588,7 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
             }
         }
 
+        syslog(LOG_DEBUG, "rate: %d known %02x flags %02x mcs %d", rate, mcs_known, mcs_flags, mcs);
         if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) {
             syslog(LOG_DEBUG, "Received bad FCS packet");
             return RS_CHANNEL_LAYER_BADFCS;

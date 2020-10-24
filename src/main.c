@@ -26,24 +26,29 @@ int main(int argc, char **argv) {
     int phys = -2;               /* invalid */
     rs_server_id_t own = 0;      /* invalid */
     rs_server_id_t other = 0;    /* invalid */
-    char ifname[IFNAMSIZ] = {0}; /* invalid */
+    char ifname[IFNAMSIZ + 1] = {0}; /* invalid */
+    char sock_file[256] = "/tmp/radiosocketd.sock";
 
     static struct option opts[] = {{"phys", required_argument, NULL, 'p'},
                                    {"ifname", required_argument, NULL, 'i'},
                                    {"channel", required_argument, NULL, 'c'},
                                    {"own", required_argument, NULL, 'a'},
                                    {"other", required_argument, NULL, 'b'},
+                                   {"socket", required_argument, NULL, 's'},
                                    {NULL, 0, NULL, 0}};
 
     int idx;
     int c;
-    while ((c = getopt_long(argc, argv, "a:b:c:i:p:", opts, &idx)) != -1) {
+    while ((c = getopt_long(argc, argv, "a:b:c:i:p:s:", opts, &idx)) != -1) {
         switch (c) {
         case 'p':
             phys = atoi(optarg);
             break;
         case 'i':
-            strcpy(ifname, optarg);
+            strncpy(ifname, optarg, IFNAMSIZ);
+            break;
+        case 's':
+            strncpy(sock_file, optarg, sizeof(sock_file) - 1);
             break;
         case 'c':
             default_channel = strtol(optarg, NULL, 16);
@@ -88,10 +93,6 @@ int main(int argc, char **argv) {
     openlog("radiosocketd", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
     syslog(LOG_NOTICE, "Starting radiosocketd...");
 
-    /* set up command loop */
-    struct rs_command_loop command_loop;
-    rs_command_loop_init(&command_loop, 512);
-
     /* set up channel layers */
     struct rs_channel_layer_pcap layer1_pcap;
     if (rs_channel_layer_pcap_init(&layer1_pcap, &state, phys, ifname)) {
@@ -99,10 +100,17 @@ int main(int argc, char **argv) {
     }
 
     struct rs_channel_layer *layer1s[1] = {&layer1_pcap.super};
+    state.channel_layers = layer1s;
+    state.n_channel_layers = 1;
 
     /* set up port layer */
     struct rs_port_layer layer2;
     rs_port_layer_init(&layer2, layer1s, 1, default_channel);
+    state.port_layer = &layer2;
+
+    /* set up command loop */
+    struct rs_command_loop command_loop;
+    rs_command_loop_init(&command_loop, sock_file, 512);
 
     /* main loop */
     signal(SIGINT, signal_handler);

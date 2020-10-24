@@ -9,16 +9,19 @@
 
 void rs_stat_init(struct rs_stat *stat, int aggregate, const char *title,
                   const char *unit, double norm_factor) {
+    stat->last_data = stat->d;
+    stat->data = stat->d + RS_STAT_N;
+
+    memset(stat->last_data, 0.0, RS_STAT_N * sizeof(double));
+    memset(stat->data, 0.0, RS_STAT_N * sizeof(double));
+    memset(stat->n_data, 0, RS_STAT_N * sizeof(int));
+
     clock_gettime(CLOCK_REALTIME, &stat->t0);
     stat->t0.tv_nsec %= 1000000L;
     stat->aggregate = aggregate;
     stat->title = title;
     stat->unit = unit;
     stat->norm_factor = norm_factor;
-
-    memset(stat->last_data, 0, RS_STAT_N * sizeof(int));
-    memset(stat->data, 0, RS_STAT_N * sizeof(int));
-    memset(stat->n_data, 0, RS_STAT_N * sizeof(int));
 }
 
 void rs_stat_register(struct rs_stat *stat, double value) {
@@ -77,11 +80,11 @@ void rs_stat_flush(struct rs_stat *stat) {
      *      xxxxx|????????| ==> 00000|00000
      *           t0       t        t=t0
      */
-    memset(stat->last_data, 0, RS_STAT_N * sizeof(double));
+    memset(stat->last_data, 0.0, RS_STAT_N * sizeof(double));
     for (int i = idx - RS_STAT_N, j = 0; i < RS_STAT_N; i++, j++) {
         stat->last_data[j] = stat->data[i];
     }
-    memset(stat->data, 0, RS_STAT_N * sizeof(double));
+    memset(stat->data, 0.0, RS_STAT_N * sizeof(double));
     memset(stat->n_data, 0, RS_STAT_N * sizeof(int));
 
     long t0_msec = stat->t0.tv_sec * 1000L + stat->t0.tv_nsec / 1000000L;
@@ -159,4 +162,16 @@ void rs_stat_printf(struct rs_stat *stat) {
     }
 
     printf("\n");
+}
+
+double rs_stat_current(struct rs_stat* stat){
+    rs_stat_flush(stat);
+
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
+    long millis = msec_diff(now, stat->t0);
+    int idx = millis / RS_STAT_DT_MSEC;
+
+    if(idx < 0 || idx > RS_STAT_N) return 0.; // Should not happen
+    return stat->data[idx-1] * stat->norm_factor;
 }

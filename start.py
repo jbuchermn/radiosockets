@@ -1,5 +1,11 @@
 import os
+import socket
+import sys
+import time
+import ctypes
 from subprocess import Popen, PIPE
+
+CONFIG_SOCKET = "/tmp/radiosocketd.sock"
 
 
 def cmd(cmd):
@@ -16,10 +22,7 @@ class PhysicalDevice:
         self.driver = ""
 
 
-if __name__ == '__main__':
-    os.chdir(os.path.dirname(os.path.realpath(__file__)))
-    os.system('make')
-
+def retrieve_physical_devices():
     phys = []
 
     iw_dev = cmd("iw dev").split("\n")
@@ -49,6 +52,86 @@ if __name__ == '__main__':
                     "ls /sys/class/net/%s/device/driver/module/drivers" % i)
             except:
                 pass
+
+    return phys
+
+
+CMD_PAYLOAD_MAX = 100
+CMD_PORT_STAT = 1
+CMD_EXIT = 13
+
+
+class CommandPayload(ctypes.Structure):
+    _fields_ = [("id", ctypes.c_uint32),
+                ("command", ctypes.c_uint32),
+                ("payload_int", ctypes.ARRAY(ctypes.c_int, CMD_PAYLOAD_MAX)),
+                ("payload_char", ctypes.ARRAY(ctypes.c_char, CMD_PAYLOAD_MAX)),
+                ("payload_double", ctypes.ARRAY(ctypes.c_double, CMD_PAYLOAD_MAX))]
+
+    def __init__(self, command, payload_int, payload_char, payload_double):
+        self.id = 0
+        self.command = command
+
+        while len(payload_int) < CMD_PAYLOAD_MAX:
+            payload_int += [0]
+        self.payload_int = (ctypes.c_int * 100)(*payload_int)
+
+        self.payload_char = payload_char.encode("ascii")
+
+        while len(payload_double) < CMD_PAYLOAD_MAX:
+            payload_double += [0.0]
+        self.payload_double = (ctypes.c_double * 100)(*payload_double)
+
+
+class ResponsePayload(ctypes.Structure):
+    _fields_ = [("id", ctypes.c_uint32),
+                ("payload_int", ctypes.ARRAY(ctypes.c_int, CMD_PAYLOAD_MAX)),
+                ("payload_char", ctypes.ARRAY(ctypes.c_char, CMD_PAYLOAD_MAX)),
+                ("payload_double", ctypes.ARRAY(ctypes.c_double, CMD_PAYLOAD_MAX))]
+
+    def get_payload_int(self):
+        return [self.payload_int[i] for i in range(CMD_PAYLOAD_MAX)]
+
+    def get_payload_char(self):
+        return self.payload_char.decode("ascii")
+
+    def get_payload_double(self):
+        return [self.payload_double[i] for i in range(CMD_PAYLOAD_MAX)]
+
+
+class SocketConnection:
+    def __init__(self):
+        self._id = 0
+
+    def command(self, command):
+        self._id += 1
+        command.id = self._id
+
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            s.connect(CONFIG_SOCKET)
+            s.send(command)
+            buff = s.recv(ctypes.sizeof(ResponsePayload))
+            response = ResponsePayload.from_buffer_copy(buff)
+
+            if response.id != command.id:
+                print("ERROR: Id mismatch")
+                return None
+
+            return response
+        except Exception as e:
+            print("ERROR: %s" % e)
+        finally:
+            s.close()
+
+        return None
+
+
+if __name__ == '__main__':
+    os.chdir(os.path.dirname(os.path.realpath(__file__)))
+    os.system('make')
+
+    phys = retrieve_physical_devices()
 
     print("\n\n")
     print("Available devices:")
@@ -83,4 +166,24 @@ if __name__ == '__main__':
         arg_p, arg_ifname, arg_own, arg_other, arg_default_channel)
     print("Executing %s" % cmd)
     input("Yes? ")
-    os.system(cmd)
+
+    daemon = Popen(cmd.split())
+
+    time.sleep(1)
+    connection = SocketConnection()
+
+    try:
+        while True:
+            response = connection.command(
+                CommandPayload(CMD_PORT_STAT, [0], "", []))
+            if response is not None:
+                print(response.get_payload_double()[:5])
+
+            time.sleep(0.5)
+    finally:
+        try:
+            connection.command(CommandPayload(CMD_EXIT, [0], "", []))
+        except:
+            pass
+
+
