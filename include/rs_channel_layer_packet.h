@@ -3,11 +3,15 @@
 
 #include "rs_channel_layer.h"
 #include "rs_packet.h"
+#include "rs_stat.h"
 
 struct rs_channel_layer_packet {
     struct rs_packet super;
+
     rs_channel_t channel;
     rs_channel_layer_seq_t seq;
+    uint16_t ts; /* LSBs of current unix timestamp in milliseconds */
+    struct rs_stats_packed stats;
 
     /*
      * RS_CHANNEL_LAYER_HEARTBEAT: heartbeat

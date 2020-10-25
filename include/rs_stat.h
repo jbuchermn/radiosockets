@@ -1,6 +1,7 @@
 #ifndef RS_STAT_H
 #define RS_STAT_H
 
+#include <stdint.h>
 #include <time.h>
 
 #define RS_STAT_N 10
@@ -37,6 +38,8 @@ void rs_stat_printf(struct rs_stat *stat);
 double rs_stat_current(struct rs_stat *stat);
 
 struct rs_stats {
+    /* Caveat of current implementation: TX bits is including headers, RX bits
+     * is excluding headers */
     struct rs_stat tx_stat_bits;
     struct rs_stat tx_stat_packets;
 
@@ -51,52 +54,27 @@ struct rs_stats {
     struct rs_stat other_rx_stat_dt;
 };
 
-/* TODO stats methods */
-//
-// **** from old rs_port_layer init method ***
-// rs_stat_init(&layer->infos[i][j].tx_stat_bits, RS_STAT_AGG_SUM,
-//              "TX", "bps", 1000. / RS_STAT_DT_MSEC);
-// rs_stat_init(&layer->infos[i][j].tx_stat_packets, RS_STAT_AGG_COUNT,
-//              "TX", "pps", 1000. / RS_STAT_DT_MSEC);
-//
-// rs_stat_init(&layer->infos[i][j].rx_stat_bits, RS_STAT_AGG_SUM,
-//              "RX", "bps", 1000. / RS_STAT_DT_MSEC);
-// rs_stat_init(&layer->infos[i][j].rx_stat_packets, RS_STAT_AGG_COUNT,
-//              "RX", "pps", 1000. / RS_STAT_DT_MSEC);
-// rs_stat_init(&layer->infos[i][j].rx_stat_dt, RS_STAT_AGG_AVG,
-//              "RX dt", "ms", 1.);
-// rs_stat_init(&layer->infos[i][j].rx_stat_missed, RS_STAT_AGG_AVG,
-//              "RX miss", "", 1.);
-//
-// rs_stat_init(&layer->infos[i][j].other_rx_stat_bits,
-//              RS_STAT_AGG_AVG, "-RX", "bps", 1.);
-// rs_stat_init(&layer->infos[i][j].other_rx_stat_dt, RS_STAT_AGG_AVG,
-//              "-RX dt", "ms", 1.);
-// rs_stat_init(&layer->infos[i][j].other_rx_stat_missed,
-//              RS_STAT_AGG_AVG, "-RX miss", "", 1.);
-//
+struct rs_stats_packed;
 
-// **** from old rs_port_layer receive method ***
-//
-// struct timespec now;
-// clock_gettime(CLOCK_REALTIME, &now);
-// uint64_t now_nsec =
-//     now.tv_sec * (uint64_t)1000000000L + now.tv_nsec;
-// double dt_msec = (now_nsec - unpacked.ts_sent) / 1000000L;
-// rs_stat_register(&info->rx_stat_packets, 1.0);
-// rs_stat_register(&info->rx_stat_bits, 8 * bytes);
-// rs_stat_register(&info->rx_stat_dt, dt_msec);
-// for (int i = 0; i < unpacked.seq - info->rx_last_seq - 1; i++)
-//     rs_stat_register(&info->rx_stat_missed, 1.0);
-// rs_stat_register(&info->rx_stat_missed, 0.0);
-//
-// info->rx_last_ts = now;
-// info->rx_last_seq = unpacked.seq;
-//
-// rs_stat_register(&info->other_rx_stat_bits,
-//                  (double)unpacked.rx_bitrate);
-// rs_stat_register(&info->other_rx_stat_missed,
-//                  0.0001 * (double)unpacked.rx_missed);
-// rs_stat_register(&info->other_rx_stat_dt, (double)unpacked.rx_dt);
+void rs_stats_init(struct rs_stats *stats);
+void rs_stats_register_tx(struct rs_stats *stats, int bytes);
+void rs_stats_register_rx(struct rs_stats *stats, int bytes, int missed_packets,
+                          struct rs_stats_packed *received_stats,
+                          uint16_t ts_sent);
+void rs_stats_printf(struct rs_stats *stats);
+
+struct rs_stats_packed {
+    uint16_t rx_bits;    /* bitrate in kbps */
+    uint16_t rx_packets; /* packet rate in pps */
+    uint16_t rx_missed;  /* normalized to 10000 */
+    uint16_t rx_dt;      /* milliseconds */
+};
+
+void rs_stats_packed_init(struct rs_stats_packed *packed,
+                          struct rs_stats *from);
+int rs_stats_packed_pack(struct rs_stats_packed *packed, uint8_t **buffer,
+                         int *buffer_len);
+int rs_stats_packed_unpack(struct rs_stats_packed *unpacked, uint8_t **buffer,
+                           int *buffer_len);
 
 #endif

@@ -16,7 +16,7 @@ void rs_channel_layer_init(struct rs_channel_layer *layer,
     for (int i = 0; i < rs_channel_layer_ch_n(layer); i++) {
         layer->channels[i].id = rs_channel_layer_ch(layer, i);
         layer->channels[i].is_in_use = 0;
-        /* TODO init stats */
+        rs_stats_init(&layer->channels[i].stats);
     }
 }
 
@@ -54,18 +54,21 @@ static int _transmit(struct rs_channel_layer *layer,
                      struct rs_channel_layer_packet *packet,
                      struct rs_channel_info *info) {
 
-    /* TODO publish own rx stats */
+    /* Publish stats */
+    rs_stats_packed_init(&packet->stats, &info->stats);
 
     info->is_in_use = 1;
 
     packet->channel = info->id;
     packet->seq = info->tx_last_seq + 1;
+    packet->ts = cur_msec();
     int res = layer->vtable->_transmit(layer, &packet->super, info->id);
     if (res > 0) {
         info->tx_last_seq++;
         clock_gettime(CLOCK_REALTIME, &info->tx_last_ts);
 
-        /* TODO register tx stats */
+        /* Register stats */
+        rs_stats_register_tx(&info->stats, res);
     }
 
     return res;
@@ -107,6 +110,13 @@ int rs_channel_layer_receive(struct rs_channel_layer *layer,
     struct rs_channel_info *info =
         &layer->channels[rs_channel_layer_extract(layer, *channel)];
 
+    info->is_in_use = 1;
+    rs_stats_register_rx(&info->stats, unpacked->super.payload_data_len,
+                         unpacked->seq - info->rx_last_seq - 1,
+                         &unpacked->stats, unpacked->ts);
+    info->rx_last_seq = unpacked->seq;
+
+
     if (unpacked->command) {
         if (unpacked->command == RS_CHANNEL_HEARTBEAT) {
             /* okay */
@@ -118,11 +128,6 @@ int rs_channel_layer_receive(struct rs_channel_layer *layer,
         free(unpacked);
         return RS_CHANNEL_LAYER_IRR;
     }
-
-    info->is_in_use = 1;
-
-    /* TODO register other's rx stats */
-    /* TODO register own rx stats */
 
     /* Move ownership to base class struct */
     *packet = calloc(1, sizeof(struct rs_packet));
@@ -172,5 +177,14 @@ void rs_channel_layer_open_channel(struct rs_channel_layer *layer,
     for (int i = 0; i < rs_channel_layer_ch_n(layer); i++) {
         if (layer->channels[i].id == channel)
             layer->channels[i].is_in_use = 1;
+    }
+}
+
+void rs_channel_layer_stats_printf(struct rs_channel_layer* layer){
+    for (int i = 0; i < rs_channel_layer_ch_n(layer); i++) {
+        if(layer->channels[i].is_in_use){
+            printf("-------- %04X --------\n", layer->channels[i].id);
+            rs_stats_printf(&layer->channels[i].stats);
+        }
     }
 }

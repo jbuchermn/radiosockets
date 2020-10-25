@@ -35,6 +35,16 @@ void rs_channel_layer_packet_pack_header(struct rs_packet *super,
         (*buffer_len)--;
     }
 
+    /* ts */
+    if(*buffer_len < sizeof(uint16_t)) return;
+    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
+        (**buffer) = (uint8_t)(packet->ts >> (8 * i));
+        (*buffer)++;
+        (*buffer_len)--;
+    }
+
+    if(rs_stats_packed_pack(&packet->stats, buffer, buffer_len)) return;
+
     /* command */
     if (*buffer_len < 1)
         return;
@@ -60,13 +70,13 @@ int rs_channel_layer_packet_unpack(struct rs_channel_layer_packet *packet,
     rs_channel_layer_packet_init(packet, payload_ownership, NULL, payload_data,
                                  payload_data_len);
 
-
     /* channel */
     if (payload_data_len < sizeof(rs_channel_t))
         return -1;
     packet->channel = 0;
     for (int i = sizeof(rs_channel_t) - 1; i >= 0; i--) {
-        packet->channel += ((rs_channel_t)(*packet->super.payload_data)) << (8 * i);
+        packet->channel += ((rs_channel_t)(*packet->super.payload_data))
+                           << (8 * i);
         packet->super.payload_data++;
         packet->super.payload_data_len--;
     }
@@ -76,10 +86,25 @@ int rs_channel_layer_packet_unpack(struct rs_channel_layer_packet *packet,
         return -1;
     packet->seq = 0;
     for (int i = sizeof(rs_channel_layer_seq_t) - 1; i >= 0; i--) {
-        packet->seq += ((rs_channel_layer_seq_t)(*packet->super.payload_data)) << (8 * i);
+        packet->seq += ((rs_channel_layer_seq_t)(*packet->super.payload_data))
+                       << (8 * i);
         packet->super.payload_data++;
         packet->super.payload_data_len--;
     }
+
+    /* ts */
+    if (packet->super.payload_data_len < sizeof(uint16_t))
+        return -1;
+    packet->ts = 0;
+    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
+        packet->ts += ((uint16_t)(*packet->super.payload_data))
+                       << (8 * i);
+        packet->super.payload_data++;
+        packet->super.payload_data_len--;
+    }
+
+    if(rs_stats_packed_unpack(&packet->stats, &packet->super.payload_data,
+                           &packet->super.payload_data_len)) return -1;
 
     /* command */
     if (payload_data_len < 1)

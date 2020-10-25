@@ -20,13 +20,12 @@ void rs_port_layer_init(struct rs_port_layer *layer,
     layer->ports[0] = calloc(1, sizeof(struct rs_port));
     layer->n_ports = 1;
 
-    /* command channel */
+    /* command port */
     layer->ports[0]->id = 0;
     layer->ports[0]->bound_channel = default_channel;
     layer->ports[0]->status = RS_PORT_OPENED;
     layer->ports[0]->tx_last_seq = 0;
-
-    /* TODO init stats */
+    rs_stats_init(&layer->ports[0]->stats);
 }
 
 void rs_port_layer_destroy(struct rs_port_layer *layer) {
@@ -47,19 +46,19 @@ int _transmit(struct rs_port_layer *layer, struct rs_port_layer_packet *packet,
         syslog(LOG_ERR, "Invalid channel");
     }
 
-    /* TODO publish own rx stats */
+    /* Publish stats */
+    rs_stats_packed_init(&packet->stats, &port->stats);
 
     int bytes;
-    if (port)
-        packet->seq = port->tx_last_seq + 1;
+    packet->seq = port->tx_last_seq + 1;
+    packet->ts = cur_msec();
     if ((bytes = rs_channel_layer_transmit(ch, &packet->super,
                                            port->bound_channel)) > 0) {
-        if (port)
-            port->tx_last_seq++;
-        if (port)
-            clock_gettime(CLOCK_REALTIME, &port->tx_last_ts);
+        port->tx_last_seq++;
+        clock_gettime(CLOCK_REALTIME, &port->tx_last_ts);
 
-        /* TODO register own tx stats */
+        /* Register stats */
+        rs_stats_register_tx(&port->stats, bytes);
     }
     return bytes;
 }
@@ -133,6 +132,7 @@ retry:
             if (!port) {
                 /* Could be handled gracefully */
                 syslog(LOG_ERR, "Received packet on unknown port");
+                goto retry;
             }
 
             if (port->bound_channel != channel) {
@@ -146,8 +146,9 @@ retry:
                 goto retry;
             }
 
-            /* TODO register own rx stats */
-            /* TODO register other's rx stats */
+            rs_stats_register_rx(&port->stats, bytes,
+                                 unpacked.seq - port->rx_last_seq - 1,
+                                 &unpacked.stats, unpacked.ts);
 
             if (unpacked.port == 0) {
                 /* Received a command packet */
@@ -245,6 +246,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
             new_port->id = port;
             new_port->bound_channel = channel;
             new_port->status = RS_PORT_OPENED;
+            rs_stats_init(&new_port->stats);
 
             layer->n_ports++;
             layer->ports = realloc(layer->ports, layer->n_ports);
@@ -347,6 +349,7 @@ int rs_port_layer_open_port(struct rs_port_layer *layer, uint8_t id,
     new_port->id = new_id;
     new_port->bound_channel = channel;
     new_port->status = RS_PORT_INITIAL;
+    rs_stats_init(&new_port->stats);
 
     layer->n_ports++;
     layer->ports = realloc(layer->ports, layer->n_ports);
@@ -354,4 +357,11 @@ int rs_port_layer_open_port(struct rs_port_layer *layer, uint8_t id,
 
     *opened_id = new_id;
     return 0;
+}
+
+void rs_port_layer_stats_printf(struct rs_port_layer *layer) {
+    for (int i = 0; i < layer->n_ports; i++) {
+        printf("-------- %04X --------\n", layer->ports[i]->id);
+        rs_stats_printf(&layer->ports[i]->stats);
+    }
 }

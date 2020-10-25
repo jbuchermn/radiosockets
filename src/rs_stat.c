@@ -94,26 +94,26 @@ void rs_stat_flush(struct rs_stat *stat) {
     stat->t0.tv_nsec = (t0_msec % 1000L) * 1000000L;
 }
 
-static void printf_val(double val){
-    const char* neg = " ";
-    if(val<0){
+static void printf_val(double val) {
+    const char *neg = " ";
+    if (val < 0) {
         val *= -1;
         neg = "-";
     }
 
     int m = 0;
-    while(val > 1000){
+    while (val > 1000) {
         val /= 1000;
         m += 1;
     }
 
-    while(val < 1 && val != 0 /* D'oh */){
+    while (val < 1 && val != 0 /* D'oh */) {
         val *= 1000;
         m -= 1;
     }
 
-    const char* ms = " ";
-    switch(m){
+    const char *ms = " ";
+    switch (m) {
     case -3:
         ms = "n";
         break;
@@ -164,7 +164,7 @@ void rs_stat_printf(struct rs_stat *stat) {
     printf("\n");
 }
 
-double rs_stat_current(struct rs_stat* stat){
+double rs_stat_current(struct rs_stat *stat) {
     rs_stat_flush(stat);
 
     struct timespec now;
@@ -172,6 +172,110 @@ double rs_stat_current(struct rs_stat* stat){
     long millis = msec_diff(now, stat->t0);
     int idx = millis / RS_STAT_DT_MSEC;
 
-    if(idx < 0 || idx > RS_STAT_N) return 0.; // Should not happen
-    return stat->data[idx-1] * stat->norm_factor;
+    if (idx < 0 || idx > RS_STAT_N)
+        return 0.; // Should not happen
+    return stat->data[idx - 1] * stat->norm_factor;
+}
+
+void rs_stats_init(struct rs_stats *stats) {
+    rs_stat_init(&stats->tx_stat_bits, RS_STAT_AGG_SUM, "TX", "bps",
+                 1000. / RS_STAT_DT_MSEC);
+    rs_stat_init(&stats->tx_stat_packets, RS_STAT_AGG_COUNT, "TX", "pps",
+                 1000. / RS_STAT_DT_MSEC);
+
+    rs_stat_init(&stats->rx_stat_bits, RS_STAT_AGG_SUM, "RX", "bps",
+                 1000. / RS_STAT_DT_MSEC);
+    rs_stat_init(&stats->rx_stat_packets, RS_STAT_AGG_COUNT, "RX", "pps",
+                 1000. / RS_STAT_DT_MSEC);
+    rs_stat_init(&stats->rx_stat_missed, RS_STAT_AGG_AVG, "RX miss", "", 1.);
+    rs_stat_init(&stats->rx_stat_dt, RS_STAT_AGG_AVG, "RX dt", "ms", 1.);
+
+    rs_stat_init(&stats->other_rx_stat_bits, RS_STAT_AGG_AVG, "-RX", "bps", 1.);
+    rs_stat_init(&stats->other_rx_stat_packets, RS_STAT_AGG_AVG, "-RX", "pps",
+                 1.);
+    rs_stat_init(&stats->other_rx_stat_missed, RS_STAT_AGG_AVG, "-RX miss", "",
+                 1.);
+    rs_stat_init(&stats->other_rx_stat_dt, RS_STAT_AGG_AVG, "-RX dt", "ms", 1.);
+}
+
+void rs_stats_register_tx(struct rs_stats *stats, int bytes) {
+    rs_stat_register(&stats->tx_stat_bits, 8 * bytes);
+    rs_stat_register(&stats->tx_stat_packets, 1.0);
+}
+void rs_stats_register_rx(struct rs_stats *stats, int bytes, int missed_packets,
+                          struct rs_stats_packed *received_stats,
+                          uint16_t ts_sent) {
+
+    rs_stat_register(&stats->rx_stat_bits, 8 * bytes);
+    rs_stat_register(&stats->rx_stat_packets, 1.0);
+    for (int i = 0; i < missed_packets; i++)
+        rs_stat_register(&stats->rx_stat_missed, 1.0);
+    rs_stat_register(&stats->rx_stat_missed, 0.0);
+    rs_stat_register(&stats->rx_stat_dt, cur_msec() - ts_sent);
+
+    rs_stat_register(&stats->other_rx_stat_bits,
+                     1000 * (double)received_stats->rx_bits);
+    rs_stat_register(&stats->other_rx_stat_packets,
+                     (double)received_stats->rx_packets);
+    rs_stat_register(&stats->other_rx_stat_missed,
+                     0.0001 * (double)received_stats->rx_missed);
+    rs_stat_register(&stats->other_rx_stat_dt, (double)received_stats->rx_dt);
+}
+
+void rs_stats_printf(struct rs_stats *stats) {
+    rs_stat_printf(&stats->tx_stat_bits);
+    rs_stat_printf(&stats->rx_stat_bits);
+    printf("\n");
+    rs_stat_printf(&stats->tx_stat_packets);
+    rs_stat_printf(&stats->rx_stat_packets);
+    rs_stat_printf(&stats->rx_stat_missed);
+    printf("\n");
+    rs_stat_printf(&stats->other_rx_stat_bits);
+    rs_stat_printf(&stats->other_rx_stat_missed);
+}
+
+void rs_stats_packed_init(struct rs_stats_packed *packed,
+                          struct rs_stats *from) {
+    packed->rx_bits = rs_stat_current(&from->rx_stat_bits) / 1000;
+    packed->rx_packets = rs_stat_current(&from->rx_stat_packets);
+    packed->rx_missed = rs_stat_current(&from->rx_stat_missed) * 10000;
+    packed->rx_dt = rs_stat_current(&from->rx_stat_dt);
+}
+
+int rs_stats_packed_pack(struct rs_stats_packed *packed, uint8_t **buffer,
+                         int *buffer_len) {
+    if(*buffer_len < 8) return -1;
+
+    *(*buffer) = (uint8_t)(packed->rx_bits >> 8);
+    *(*buffer + 1) = (uint8_t)(packed->rx_bits);
+    *(*buffer + 2) = (uint8_t)(packed->rx_packets >> 8);
+    *(*buffer + 3) = (uint8_t)(packed->rx_packets);
+    *(*buffer + 4) = (uint8_t)(packed->rx_missed >> 8);
+    *(*buffer + 5) = (uint8_t)(packed->rx_missed);
+    *(*buffer + 6) = (uint8_t)(packed->rx_dt >> 8);
+    *(*buffer + 7) = (uint8_t)(packed->rx_dt);
+
+    *buffer += 8;
+    *buffer_len -= 8;
+
+    return 0;
+}
+
+int rs_stats_packed_unpack(struct rs_stats_packed *unpacked, uint8_t **buffer,
+                           int *buffer_len) {
+    if (*buffer_len < 8)
+        return -1;
+    unpacked->rx_bits =
+        (((uint16_t)(*(*buffer))) << 8) + (uint16_t)(*(*buffer + 1));
+    unpacked->rx_packets =
+        (((uint16_t)(*(*buffer + 2))) << 8) + (uint16_t)(*(*buffer + 3));
+    unpacked->rx_missed =
+        (((uint16_t)(*(*buffer + 4))) << 8) + (uint16_t)(*(*buffer + 5));
+    unpacked->rx_dt =
+        (((uint16_t)(*(*buffer + 6))) << 8) + (uint16_t)(*(*buffer + 7));
+
+    *buffer_len -= 8;
+    *buffer += 8;
+
+    return 0;
 }

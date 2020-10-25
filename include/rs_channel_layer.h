@@ -100,6 +100,7 @@ uint16_t rs_channel_layer_extract(struct rs_channel_layer *layer,
 void rs_channel_layer_close_all_channels(struct rs_channel_layer *layer);
 void rs_channel_layer_open_channel(struct rs_channel_layer *layer,
                                    rs_channel_t channel);
+void rs_channel_layer_stats_printf(struct rs_channel_layer* layer);
 
 struct rs_channel_info {
     rs_channel_t id;
@@ -107,7 +108,6 @@ struct rs_channel_info {
     int is_in_use;
 
     struct timespec tx_last_ts;
-    struct timespec rx_last_ts;
 
     rs_channel_layer_seq_t tx_last_seq;
     rs_channel_layer_seq_t rx_last_seq;

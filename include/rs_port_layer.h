@@ -64,11 +64,12 @@ void rs_port_layer_main(struct rs_port_layer *layer,
 int rs_port_layer_open_port(struct rs_port_layer *layer, uint8_t id,
                             rs_port_id_t *opened_id, rs_channel_t channel);
 
+void rs_port_layer_stats_printf(struct rs_port_layer* layer);
+
 struct rs_port {
     rs_port_id_t id;
 
     struct timespec tx_last_ts;
-    struct timespec rx_last_ts;
 
     rs_port_layer_seq_t tx_last_seq;
     rs_port_layer_seq_t rx_last_seq;

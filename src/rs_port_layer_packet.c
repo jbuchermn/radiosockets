@@ -16,6 +16,7 @@ void rs_port_layer_packet_pack_header(struct rs_packet *super, uint8_t **buffer,
                                       int *buffer_len) {
     struct rs_port_layer_packet *packet = rs_cast(rs_port_layer_packet, super);
 
+    /* port */
     if (*buffer_len < sizeof(rs_port_id_t))
         return;
     for (int i = sizeof(rs_port_id_t) - 1; i >= 0; i--) {
@@ -23,6 +24,8 @@ void rs_port_layer_packet_pack_header(struct rs_packet *super, uint8_t **buffer,
         (*buffer)++;
         (*buffer_len)--;
     }
+
+    /* seq */
     if (*buffer_len < sizeof(rs_port_layer_seq_t))
         return;
     for (int i = sizeof(rs_port_layer_seq_t) - 1; i >= 0; i--) {
@@ -30,6 +33,17 @@ void rs_port_layer_packet_pack_header(struct rs_packet *super, uint8_t **buffer,
         (*buffer)++;
         (*buffer_len)--;
     }
+
+    /* ts */
+    if(*buffer_len < sizeof(uint16_t)) return;
+    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
+        (**buffer) = (uint8_t)(packet->ts >> (8 * i));
+        (*buffer)++;
+        (*buffer_len)--;
+    }
+
+
+    if(rs_stats_packed_pack(&packet->stats, buffer, buffer_len)) return;
 
     if (packet->port == 0) {
         for (int i = 0; i < RS_PORT_LAYER_COMMAND_LENGTH; i++) {
@@ -62,8 +76,8 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
                               from_packet->payload_data,
                               from_packet->payload_data_len);
 
-    /* Set port and seq */
-    if (from_packet->payload_data_len < sizeof(rs_port_id_t))
+    /* port */
+    if (packet->super.payload_data_len < sizeof(rs_port_id_t))
         return -1;
     packet->port = 0;
     for (int i = sizeof(rs_port_id_t) - 1; i >= 0; i--) {
@@ -72,7 +86,8 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
         packet->super.payload_data++;
         packet->super.payload_data_len--;
     }
-    if (from_packet->payload_data_len < sizeof(rs_port_layer_seq_t))
+    /* seq */
+    if (packet->super.payload_data_len < sizeof(rs_port_layer_seq_t))
         return -1;
     packet->seq = 0;
     for (int i = sizeof(rs_port_layer_seq_t) - 1; i >= 0; i--) {
@@ -81,6 +96,20 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
         packet->super.payload_data++;
         packet->super.payload_data_len--;
     }
+
+    /* ts */
+    if (packet->super.payload_data_len < sizeof(uint16_t))
+        return -1;
+    packet->ts = 0;
+    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
+        packet->ts += ((uint16_t)(*packet->super.payload_data))
+                       << (8 * i);
+        packet->super.payload_data++;
+        packet->super.payload_data_len--;
+    }
+
+    if(rs_stats_packed_unpack(&packet->stats, &packet->super.payload_data,
+                           &packet->super.payload_data_len)) return -1;
 
     /* Possibly set command */
     if (packet->port == 0) {

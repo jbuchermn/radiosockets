@@ -23,9 +23,9 @@ void signal_handler(int sig_num) {
 int main(int argc, char **argv) {
     /* parameters */
     rs_channel_t default_channel = 0x1006;
-    int phys = -2;               /* invalid */
-    rs_server_id_t own = 0;      /* invalid */
-    rs_server_id_t other = 0;    /* invalid */
+    int phys = -2;                   /* invalid */
+    rs_server_id_t own = 0;          /* invalid */
+    rs_server_id_t other = 0;        /* invalid */
     char ifname[IFNAMSIZ + 1] = {0}; /* invalid */
     char sock_file[256] = "/tmp/radiosocketd.sock";
 
@@ -113,9 +113,16 @@ int main(int argc, char **argv) {
     struct rs_command_loop command_loop;
     rs_command_loop_init(&command_loop, sock_file);
 
+    struct timespec last_loop;
+    clock_gettime(CLOCK_REALTIME, &last_loop);
+    int printf_cnt = 0;
+    int printf_mod = 10;
+    long int loop_nsec = 50/*ms*/ *100000L;
+
     /* main loop */
     signal(SIGINT, signal_handler);
     while (state.running) {
+        /* Do stuff */
         rs_command_loop_run(&command_loop, &state);
 
         struct rs_packet *packet;
@@ -124,6 +131,28 @@ int main(int argc, char **argv) {
         }
         rs_channel_layer_main(&layer1_pcap.super);
         rs_port_layer_main(&layer2, NULL);
+
+        /* Print */
+        if (++printf_cnt % printf_mod == 0) {
+            printf("\e[1;1H\e[2J============= PORT =============\n");
+            rs_port_layer_stats_printf(&layer2);
+            printf("============ CHANNEL ===========\n");
+            rs_channel_layer_stats_printf(&layer1_pcap.super);
+        }
+
+        /* Loop limit */
+        struct timespec loop;
+        clock_gettime(CLOCK_REALTIME, &loop);
+
+        struct timespec sleep = {0};
+        long int nsec_diff =
+            (loop.tv_sec > last_loop.tv_sec ? 1000000000L : 0) + loop.tv_nsec -
+            last_loop.tv_nsec;
+
+        sleep.tv_nsec = nsec_diff > loop_nsec ? 0 : loop_nsec - nsec_diff;
+        if(sleep.tv_nsec) nanosleep(&sleep, &sleep);
+
+        last_loop = loop;
     }
 
     /* shutdown */

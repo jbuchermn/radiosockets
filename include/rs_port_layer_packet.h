@@ -2,6 +2,7 @@
 #define RS_PORT_LAYER_PACKET_H
 
 #include "rs_port_layer.h"
+#include "rs_stat.h"
 
 #define RS_PORT_LAYER_COMMAND_LENGTH 8
 
@@ -12,6 +13,8 @@ struct rs_port_layer_packet {
 
     rs_port_id_t port;
     rs_port_layer_seq_t seq;
+    uint16_t ts; /* LSBs of current unix timestamp in milliseconds */
+    struct rs_stats_packed stats;
 
     uint8_t command[RS_PORT_LAYER_COMMAND_LENGTH];
 };
