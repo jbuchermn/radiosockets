@@ -8,6 +8,7 @@
 #include <syslog.h>
 #include <unistd.h>
 
+#include "rs_app_layer.h"
 #include "rs_command_loop.h"
 #include "rs_port_layer.h"
 #include "rs_server_state.h"
@@ -18,6 +19,7 @@ static void handle_command(struct rs_command_payload *command,
     if (command->command == RS_COMMAND_LOOP_CMD_EXIT) {
         state->running = 0;
     } else if (command->command == RS_COMMAND_LOOP_CMD_PORT_STAT) {
+        /* TODO Reenable stats */
         /* rs_port_id_t port = command->payload_int[0]; */
         /*  */
         /* struct rs_port_channel_info *info; */
@@ -40,10 +42,15 @@ static void handle_command(struct rs_command_payload *command,
     } else if (command->command == RS_COMMAND_LOOP_CMD_OPEN_PORT) {
         int id = (uint8_t)command->payload_int[0];
         int channel = (rs_channel_t)command->payload_int[1];
+        int udp_port = command->payload_int[2];
+
         rs_port_id_t opened_id;
         response->payload_int[0] =
             rs_port_layer_open_port(state->port_layer, id, &opened_id, channel);
         response->payload_int[1] = opened_id;
+        response->payload_int[2] = udp_port;
+
+        rs_app_layer_open_connection(state->app_layer, opened_id, udp_port);
     }
 }
 
@@ -58,10 +65,9 @@ void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file) {
 
     /* create socket */
     if ((loop->socket_fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
-        syslog(LOG_ERR, "create_socket: Socket creation failed");
-        exit(1);
+        syslog(LOG_ERR, "Could not create socket");
+        return;
     }
-    syslog(LOG_DEBUG, "create_socket: Socket created");
 
     /* setup socket configuration */
     struct sockaddr_un addr;
@@ -75,17 +81,16 @@ void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file) {
 
     /* bind to socket */
     if (bind(loop->socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        syslog(LOG_ERR, "create_socket: Bind failed");
-        exit(1);
+        syslog(LOG_ERR, "Could not bind socket");
+        return;
     }
     listen(loop->socket_fd, 3);
-    syslog(LOG_DEBUG, "create_socket: Bind done");
 
     /* put socket into nonblocking mode */
     int flags = fcntl(loop->socket_fd, F_GETFL);
     fcntl(loop->socket_fd, F_SETFL, flags | O_NONBLOCK);
 
-    syslog(LOG_DEBUG, "create_socket: Server listening on socket");
+    syslog(LOG_DEBUG, "command loop: Server listening on socket");
 }
 
 void rs_command_loop_destroy(struct rs_command_loop *loop) {

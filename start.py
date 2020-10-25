@@ -167,8 +167,8 @@ if __name__ == '__main__':
         arg_other = "0xDD"
 
     arg_ifname = "wlan%dmon" % phys.idx
-    if "8188eu" in phys.driver:
-        print("Detected patched 8188eu driver => using existing interface...")
+    if "8188eu" in phys.driver or "rtl88XXau" in phys.driver:
+        print("Detected aircrack-ng driver => using existing interface...")
         if len(phys.interfaces) != 1:
             print("Unexpected: %s" % phys.interfaces)
             exit(1)
@@ -186,8 +186,8 @@ if __name__ == '__main__':
 
     try:
         response = connection.command(
-            CommandPayload(CMD_OPEN_PORT, [5 if is_up else 10, 0x1006], "", []))
-        # print(response.get_payload_int()[:2])
+            CommandPayload(CMD_OPEN_PORT, [5 if is_up else 10, 0x1006, 8805 if is_up else 8810], "", []))
+        print(response.get_payload_int()[:3])
 
         while True:
             # response = connection.command(

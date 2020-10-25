@@ -249,7 +249,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
             rs_stats_init(&new_port->stats);
 
             layer->n_ports++;
-            layer->ports = realloc(layer->ports, layer->n_ports);
+            layer->ports = realloc(layer->ports, layer->n_ports * sizeof(void*));
             layer->ports[layer->n_ports - 1] = new_port;
             syslog(LOG_NOTICE, "Successfully opened port %d", port);
             ack = 1;
@@ -352,7 +352,7 @@ int rs_port_layer_open_port(struct rs_port_layer *layer, uint8_t id,
     rs_stats_init(&new_port->stats);
 
     layer->n_ports++;
-    layer->ports = realloc(layer->ports, layer->n_ports);
+    layer->ports = realloc(layer->ports, layer->n_ports * sizeof(void*));
     layer->ports[layer->n_ports - 1] = new_port;
 
     *opened_id = new_id;

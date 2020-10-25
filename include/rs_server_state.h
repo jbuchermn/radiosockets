@@ -7,6 +7,7 @@
 
 struct rs_command_loop;
 struct rs_port_layer;
+struct rs_app_layer;
 
 /* "MAC" adress */
 typedef uint8_t rs_server_id_t;
@@ -22,6 +23,7 @@ struct rs_server_state {
     struct rs_channel_layer **channel_layers;
     int n_channel_layers;
     struct rs_port_layer *port_layer;
+    struct rs_app_layer *app_layer;
 };
 
 inline struct rs_channel_layer *

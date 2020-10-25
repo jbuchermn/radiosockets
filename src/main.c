@@ -12,6 +12,11 @@
 #include "rs_packet.h"
 #include "rs_port_layer.h"
 #include "rs_server_state.h"
+#include "rs_app_layer.h"
+
+#define MAIN_LOOP_NS 5/*ms*/ * 1000000L
+#define MAIN_PRINT_STATS
+#define MAIN_PRINT_STATS_N 100
 
 static struct rs_server_state state;
 
@@ -109,15 +114,21 @@ int main(int argc, char **argv) {
     rs_port_layer_init(&layer2, &state, default_channel);
     state.port_layer = &layer2;
 
+    /* set up app layer */
+    struct rs_app_layer layer3;
+    rs_app_layer_init(&layer3, &state);
+    state.app_layer = &layer3;
+
     /* set up command loop */
     struct rs_command_loop command_loop;
     rs_command_loop_init(&command_loop, sock_file);
 
     struct timespec last_loop;
     clock_gettime(CLOCK_REALTIME, &last_loop);
+
+#ifdef MAIN_PRINT_STATS
     int printf_cnt = 0;
-    int printf_mod = 10;
-    long int loop_nsec = 50/*ms*/ *100000L;
+#endif
 
     /* main loop */
     signal(SIGINT, signal_handler);
@@ -128,17 +139,21 @@ int main(int argc, char **argv) {
         struct rs_packet *packet;
         rs_port_id_t port;
         while (!rs_port_layer_receive(&layer2, &packet, &port)) {
+            rs_app_layer_main(&layer3, packet, port);
         }
         rs_channel_layer_main(&layer1_pcap.super);
         rs_port_layer_main(&layer2, NULL);
+        rs_app_layer_main(&layer3, NULL, 0);
 
+#ifdef MAIN_PRINT_STATS
         /* Print */
-        if (++printf_cnt % printf_mod == 0) {
+        if (++printf_cnt % MAIN_PRINT_STATS_N == 0) {
             printf("\e[1;1H\e[2J============= PORT =============\n");
             rs_port_layer_stats_printf(&layer2);
             printf("============ CHANNEL ===========\n");
             rs_channel_layer_stats_printf(&layer1_pcap.super);
         }
+#endif
 
         /* Loop limit */
         struct timespec loop;
@@ -149,7 +164,7 @@ int main(int argc, char **argv) {
             (loop.tv_sec > last_loop.tv_sec ? 1000000000L : 0) + loop.tv_nsec -
             last_loop.tv_nsec;
 
-        sleep.tv_nsec = nsec_diff > loop_nsec ? 0 : loop_nsec - nsec_diff;
+        sleep.tv_nsec = nsec_diff > MAIN_LOOP_NS ? 0 : MAIN_LOOP_NS - nsec_diff;
         if(sleep.tv_nsec) nanosleep(&sleep, &sleep);
 
         last_loop = loop;
@@ -161,6 +176,7 @@ int main(int argc, char **argv) {
     rs_command_loop_destroy(&command_loop);
     rs_channel_layer_destroy(&layer1_pcap.super);
     rs_port_layer_destroy(&layer2);
+    rs_app_layer_destroy(&layer3);
 
     syslog(LOG_NOTICE, "...done");
     closelog();
