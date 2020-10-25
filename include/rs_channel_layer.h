@@ -36,7 +36,8 @@ struct rs_channel_layer {
 };
 
 void rs_channel_layer_init(struct rs_channel_layer *layer,
-                           struct rs_server_state *server);
+                           struct rs_server_state *server,
+                           struct rs_channel_layer_vtable *vtable);
 int rs_channel_layer_owns_channel(struct rs_channel_layer *layer,
                                   rs_channel_t channel);
 

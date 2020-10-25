@@ -154,7 +154,7 @@ if __name__ == '__main__':
         phys = phys[int(input("Index? "))]
 
     arg_p = phys.idx
-    arg_default_channel = "0x100B"
+    arg_default_channel = "0x1006"
 
     is_up = 'pi-up' in os.uname()[1]
     if len(sys.argv) > 1 and sys.argv[1] == "fake-up":

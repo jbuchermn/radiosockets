@@ -7,7 +7,9 @@
 #include "rs_util.h"
 
 void rs_channel_layer_init(struct rs_channel_layer *layer,
-                           struct rs_server_state *server) {
+                           struct rs_server_state *server,
+                           struct rs_channel_layer_vtable* vtable) {
+    layer->vtable = vtable;
     layer->server = server;
     layer->channels =
         calloc(rs_channel_layer_ch_n(layer), sizeof(struct rs_channel_info));
@@ -153,6 +155,7 @@ void rs_channel_layer_main(struct rs_channel_layer *layer) {
             rs_channel_layer_packet_init(&packet, NULL, NULL, dummy,
                                          RS_CHANNEL_LAYER_CMD_DUMMY_SIZE);
 
+            packet.command = RS_CHANNEL_HEARTBEAT;
             _transmit(layer, &packet, &layer->channels[j]);
             rs_packet_destroy(&packet.super);
         }

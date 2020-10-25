@@ -30,34 +30,6 @@ void rs_port_layer_packet_pack_header(struct rs_packet *super, uint8_t **buffer,
         (*buffer)++;
         (*buffer_len)--;
     }
-    if (*buffer_len < sizeof(uint64_t))
-        return;
-    for (int i = sizeof(uint64_t) - 1; i >= 0; i--) {
-        (**buffer) = (uint8_t)(packet->ts_sent >> (8 * i));
-        (*buffer)++;
-        (*buffer_len)--;
-    }
-    if (*buffer_len < sizeof(uint16_t))
-        return;
-    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
-        (**buffer) = (uint8_t)(packet->rx_bitrate >> (8 * i));
-        (*buffer)++;
-        (*buffer_len)--;
-    }
-    if (*buffer_len < sizeof(uint16_t))
-        return;
-    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
-        (**buffer) = (uint8_t)(packet->rx_missed >> (8 * i));
-        (*buffer)++;
-        (*buffer_len)--;
-    }
-    if (*buffer_len < sizeof(uint16_t))
-        return;
-    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
-        (**buffer) = (uint8_t)(packet->rx_dt >> (8 * i));
-        (*buffer)++;
-        (*buffer_len)--;
-    }
 
     if (packet->port == 0) {
         for (int i = 0; i < RS_PORT_LAYER_COMMAND_LENGTH; i++) {
@@ -74,14 +46,11 @@ void rs_port_layer_packet_init(struct rs_port_layer_packet *packet,
                                void *payload_ownership,
                                struct rs_packet *payload_packet,
                                uint8_t *payload_data, int payload_data_len) {
-    packet->super.vtable = &vtable;
     rs_packet_init(&packet->super, payload_ownership, payload_packet,
                    payload_data, payload_data_len);
+    packet->super.vtable = &vtable;
     packet->port = 0;
     packet->seq = 0;
-    struct timespec now;
-    clock_gettime(CLOCK_REALTIME, &now);
-    packet->ts_sent = now.tv_sec * (uint64_t)1000000000L + now.tv_nsec;
     memset(packet->command, 0, sizeof(packet->command));
 }
 
@@ -93,7 +62,7 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
                               from_packet->payload_data,
                               from_packet->payload_data_len);
 
-    /* Set port, seq and ts_sent */
+    /* Set port and seq */
     if (from_packet->payload_data_len < sizeof(rs_port_id_t))
         return -1;
     packet->port = 0;
@@ -109,40 +78,6 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
     for (int i = sizeof(rs_port_layer_seq_t) - 1; i >= 0; i--) {
         packet->seq += ((rs_port_layer_seq_t)(*packet->super.payload_data))
                        << (8 * i);
-        packet->super.payload_data++;
-        packet->super.payload_data_len--;
-    }
-    if (from_packet->payload_data_len < sizeof(uint64_t))
-        return -1;
-    packet->ts_sent = 0;
-    for (int i = sizeof(uint64_t) - 1; i >= 0; i--) {
-        packet->ts_sent += ((uint64_t)(*packet->super.payload_data)) << (8 * i);
-        packet->super.payload_data++;
-        packet->super.payload_data_len--;
-    }
-    if (from_packet->payload_data_len < sizeof(uint16_t))
-        return -1;
-    packet->rx_bitrate = 0;
-    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
-        packet->rx_bitrate += ((uint16_t)(*packet->super.payload_data))
-                              << (8 * i);
-        packet->super.payload_data++;
-        packet->super.payload_data_len--;
-    }
-    if (from_packet->payload_data_len < sizeof(uint16_t))
-        return -1;
-    packet->rx_missed = 0;
-    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
-        packet->rx_missed += ((uint16_t)(*packet->super.payload_data))
-                             << (8 * i);
-        packet->super.payload_data++;
-        packet->super.payload_data_len--;
-    }
-    if (from_packet->payload_data_len < sizeof(uint16_t))
-        return -1;
-    packet->rx_dt = 0;
-    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
-        packet->rx_dt += ((uint16_t)(*packet->super.payload_data)) << (8 * i);
         packet->super.payload_data++;
         packet->super.payload_data_len--;
     }

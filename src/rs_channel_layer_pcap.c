@@ -209,8 +209,7 @@ static struct rs_channel_layer_vtable vtable;
 int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
                                struct rs_server_state *server, int phys,
                                char *ifname) {
-    layer->super.vtable = &vtable;
-    rs_channel_layer_init(&layer->super, server);
+    rs_channel_layer_init(&layer->super, server, &vtable);
     layer->pcap = NULL;
 
     /* initialize nl80211 */
