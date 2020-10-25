@@ -6,7 +6,7 @@
 #define RS_CHANNEL_LAYER_PCAP_HEADER_SIZE (2 + sizeof(rs_channel_t))
 
 struct rs_channel_layer_pcap_packet {
-    struct rs_packet super;
+    struct rs_channel_layer_packet super;
     rs_channel_t channel;
 };
 

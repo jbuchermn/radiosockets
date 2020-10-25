@@ -10,8 +10,6 @@
 #include "rs_packet.h"
 
 #define RS_PCAP_TX_BUFSIZE 2048
-#define RS_PCAP_HEADER_CODE_1 0xFE
-#define RS_PCAP_HEADER_CODE_2 0xDC
 
 struct nl_sock;
 struct nl_cb;

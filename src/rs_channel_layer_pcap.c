@@ -17,8 +17,8 @@
 #include "radiotap-library/platform.h"
 #include "radiotap-library/radiotap_iter.h"
 
+#include "rs_channel_layer_packet.h"
 #include "rs_channel_layer_pcap.h"
-#include "rs_channel_layer_pcap_packet.h"
 #include "rs_packet.h"
 #include "rs_server_state.h"
 #include "rs_util.h"
@@ -209,8 +209,8 @@ static struct rs_channel_layer_vtable vtable;
 int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
                                struct rs_server_state *server, int phys,
                                char *ifname) {
-    rs_channel_layer_init(&layer->super, server);
     layer->super.vtable = &vtable;
+    rs_channel_layer_init(&layer->super, server);
     layer->pcap = NULL;
 
     /* initialize nl80211 */
@@ -492,9 +492,8 @@ static uint8_t ieee80211_header[] __attribute__((unused)) = {
     0x00,
 };
 
-int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
-                                   struct rs_packet *packet,
-                                   rs_channel_t channel) {
+static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
+                     rs_channel_t channel) {
     struct rs_channel_layer_pcap *layer = rs_cast(rs_channel_layer_pcap, super);
 
     if (!rs_channel_layer_owns_channel(super, channel)) {
@@ -537,31 +536,27 @@ int rs_channel_layer_pcap_transmit(struct rs_channel_layer *super,
     tx_ptr += sizeof(ieee80211_header);
     tx_len -= sizeof(ieee80211_header);
 
-    struct rs_channel_layer_pcap_packet tmp_packet;
-    rs_channel_layer_pcap_packet_init(&tmp_packet, NULL, packet, NULL, 0,
-                                      channel);
     uint8_t *tx_begin_payload = tx_ptr;
-    rs_packet_pack(&tmp_packet.super, &tx_ptr, &tx_len);
-    rs_packet_destroy(&tmp_packet.super);
+    rs_packet_pack(packet, &tx_ptr, &tx_len);
 
     if (pcap_inject(layer->pcap, tx_buf, tx_ptr - tx_buf) != tx_ptr - tx_buf) {
         syslog(LOG_ERR, "Could not inject packet");
         return -1;
     }
 
-    return tx_ptr - tx_begin_payload - RS_CHANNEL_LAYER_PCAP_HEADER_SIZE;
+    return tx_ptr - tx_begin_payload;
 }
 
-static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
-                                         struct rs_packet **packet,
-                                         rs_channel_t *channel) {
+static int _receive(struct rs_channel_layer *super,
+                    struct rs_channel_layer_packet **packet,
+                    rs_channel_t channel) {
 
     struct rs_channel_layer_pcap *layer = rs_cast(rs_channel_layer_pcap, super);
     if (layer->pcap == NULL) {
         return -1;
     }
-    if (*channel) {
-        nl_set_channel(layer, rs_channel_layer_extract(&layer->super, *channel));
+    if (channel) {
+        nl_set_channel(layer, rs_channel_layer_extract(&layer->super, channel));
     }
 
     struct pcap_pkthdr header;
@@ -633,30 +628,21 @@ static int rs_channel_layer_pcap_receive(struct rs_channel_layer *super,
         uint8_t *payload_copy = calloc(payload_len, sizeof(uint8_t));
         memcpy(payload_copy, payload, payload_len);
 
-        struct rs_channel_layer_pcap_packet pcap_packet;
-        if (rs_channel_layer_pcap_packet_unpack(&pcap_packet, payload_copy,
-                                                payload_copy, payload_len)) {
+        struct rs_channel_layer_packet *unpacked =
+            calloc(1, sizeof(struct rs_channel_layer_packet));
+
+        if (rs_channel_layer_packet_unpack(unpacked, payload_copy, payload_copy,
+                                           payload_len)) {
             syslog(LOG_DEBUG,
                    "Received packet which could not be unpacked on channel "
                    "layer (%db)",
                    payload_len);
-            free(payload_copy);
+            rs_packet_destroy(&unpacked->super);
+            free(unpacked);
             return RS_CHANNEL_LAYER_IRR;
         }
 
-        if (!rs_channel_layer_owns_channel(&layer->super,
-                                           pcap_packet.channel)) {
-            syslog(LOG_DEBUG, "Received packet on channel without ownership");
-            free(payload_copy);
-            return RS_CHANNEL_LAYER_IRR;
-        }
-
-        *packet = calloc(1, sizeof(struct rs_packet));
-        rs_packet_init(*packet, pcap_packet.super.payload_ownership,
-                       pcap_packet.super.payload_packet,
-                       pcap_packet.super.payload_data,
-                       pcap_packet.super.payload_data_len);
-        *channel = pcap_packet.channel;
+        (*packet) = unpacked;
 
         return 0;
     }
@@ -672,8 +658,8 @@ int rs_channel_layer_pcap_ch_n(struct rs_channel_layer *super) { return 12; }
 
 static struct rs_channel_layer_vtable vtable = {
     .destroy = rs_channel_layer_pcap_destroy,
-    .transmit = rs_channel_layer_pcap_transmit,
-    .receive = rs_channel_layer_pcap_receive,
+    ._transmit = _transmit,
+    ._receive = _receive,
     .ch_base = rs_channel_layer_pcap_ch_base,
     .ch_n = rs_channel_layer_pcap_ch_n,
 };

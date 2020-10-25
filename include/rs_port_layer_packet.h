@@ -5,11 +5,13 @@
 
 #define RS_PORT_LAYER_COMMAND_LENGTH 8
 
+typedef uint16_t rs_port_layer_seq_t;
+
 struct rs_port_layer_packet {
     struct rs_packet super;
 
     rs_port_id_t port;
-    rs_port_seq_t seq;
+    rs_port_layer_seq_t seq;
 
     /* is set in init() to nanosecond timestamp */
     uint64_t ts_sent;
