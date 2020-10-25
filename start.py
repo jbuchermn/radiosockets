@@ -166,6 +166,9 @@ if __name__ == '__main__':
         arg_own = "0xFF"
         arg_other = "0xDD"
 
+    # TODO: Check for NetworkManager conf
+    # TODO: Check if zombies are running
+
     arg_ifname = "wlan%dmon" % phys.idx
     if "8188eu" in phys.driver or "rtl88XXau" in phys.driver:
         print("Detected aircrack-ng driver => using existing interface...")
@@ -187,9 +190,15 @@ if __name__ == '__main__':
     try:
         response = connection.command(
             CommandPayload(CMD_OPEN_PORT, [5 if is_up else 10, 0x1006, 8805 if is_up else 8810], "", []))
-        print(response.get_payload_int()[:3])
 
+        time.sleep(2)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        addr = ('127.0.0.1', response.get_payload_int()[2])
+        msg = "a" * 1024
         while True:
+            s.sendto(msg.encode('ascii'), addr)
+
             # response = connection.command(
             #     CommandPayload(CMD_PORT_STAT, [0], "", []))
             # if response is not None:
@@ -197,7 +206,7 @@ if __name__ == '__main__':
             #     print("TX=%8.2fkbps (reported: %8.2fkbps with loss: %2d%%) RX=%8.2fkbps with loss: %2d%%" %
             #           (p[0]/1000, p[1]/1000, p[2] * 100 if p[1] > 0 else 100, p[3]/1000, p[4] * 100 if p[3] > 0 else 100))
 
-            time.sleep(0.5)
+            time.sleep(0.005)
     finally:
         try:
             connection.command(CommandPayload(CMD_EXIT, [0], "", []))

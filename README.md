@@ -30,7 +30,8 @@ Experiments:
     + mt7601u    -> rt5572:     downstream worked, upstream worked
 
 Hypothesis
-    +  8188eu driver: continuous tx capabilities, rx breaks
-    +  rtl88XXau driver: ?
-    +  rt8xxxu driver does not have tx capabilities, no rx problems - however works with aireplay?!
-    +  rt2800usb and mt7601u work both ways
+    + 8188eu driver: continuous tx capabilities, rx breaks
+    + rtl88XXau driver: ?
+    + rt8xxxu driver does not have tx capabilities, no rx problems - however works with aireplay?!
+    + rt2800usb and mt7601u work both ways
+    + NetworkManager is probably responsible for problematic RX
