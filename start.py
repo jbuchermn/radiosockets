@@ -22,12 +22,14 @@ if __name__ == '__main__':
     d = Daemon("./basic.conf", arg_own, arg_other)
     d.start()
 
-    mod = 20
-    sleep_s = 0.05
+    mod = 50
+    sleep_s = 0.02
 
     if is_pi:
         mod = 5000
         sleep_s = 0.0002
+
+    print("UDP datarate: %fMbps" % (0.008 / sleep_s))
 
     try:
         time.sleep(2)

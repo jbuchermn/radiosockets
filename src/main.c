@@ -15,9 +15,9 @@
 #include "rs_port_layer.h"
 #include "rs_server_state.h"
 
-#define MAIN_LOOP_NS 500 /*us*/ * 1000L
+#define MAIN_LOOP_NS 10 /*us*/ * 1000L
 /* #define MAIN_PRINT_STATS */
-#define MAIN_PRINT_STATS_N 1000
+/* #define MAIN_PRINT_STATS_N 1000 */
 
 static struct rs_server_state state;
 
