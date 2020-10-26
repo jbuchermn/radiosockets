@@ -207,9 +207,9 @@ static void nl_set_channel(struct rs_channel_layer_pcap *layer,
 static struct rs_channel_layer_vtable vtable;
 
 int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
-                               struct rs_server_state *server, int phys,
-                               char *ifname) {
-    rs_channel_layer_init(&layer->super, server, &vtable);
+                               struct rs_server_state *server, uint8_t ch_base,
+                               int phys, char *ifname) {
+    rs_channel_layer_init(&layer->super, server, ch_base, &vtable);
     layer->pcap = NULL;
 
     /* initialize nl80211 */
@@ -649,16 +649,11 @@ static int _receive(struct rs_channel_layer *super,
     return RS_CHANNEL_LAYER_EOF;
 }
 
-uint8_t rs_channel_layer_pcap_ch_base(struct rs_channel_layer *super) {
-    return 0x01;
-}
-
 int rs_channel_layer_pcap_ch_n(struct rs_channel_layer *super) { return 12; }
 
 static struct rs_channel_layer_vtable vtable = {
     .destroy = rs_channel_layer_pcap_destroy,
     ._transmit = _transmit,
     ._receive = _receive,
-    .ch_base = rs_channel_layer_pcap_ch_base,
     .ch_n = rs_channel_layer_pcap_ch_n,
 };

@@ -1,4 +1,5 @@
 #include <getopt.h>
+#include <libconfig.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -7,15 +8,15 @@
 #include <syslog.h>
 #include <unistd.h>
 
+#include "rs_app_layer.h"
 #include "rs_channel_layer_pcap.h"
 #include "rs_command_loop.h"
 #include "rs_packet.h"
 #include "rs_port_layer.h"
 #include "rs_server_state.h"
-#include "rs_app_layer.h"
 
-#define MAIN_LOOP_NS 500/*us*/ * 1000L
-#define MAIN_PRINT_STATS
+#define MAIN_LOOP_NS 500 /*us*/ * 1000L
+/* #define MAIN_PRINT_STATS */
 #define MAIN_PRINT_STATS_N 1000
 
 static struct rs_server_state state;
@@ -26,43 +27,35 @@ void signal_handler(int sig_num) {
 }
 
 int main(int argc, char **argv) {
-    /* parameters */
-    rs_channel_t default_channel = 0x1006;
-    int phys = -2;                   /* invalid */
-    rs_server_id_t own = 0;          /* invalid */
-    rs_server_id_t other = 0;        /* invalid */
-    char ifname[IFNAMSIZ + 1] = {0}; /* invalid */
-    char sock_file[256] = "/tmp/radiosocketd.sock";
 
-    static struct option opts[] = {{"phys", required_argument, NULL, 'p'},
-                                   {"ifname", required_argument, NULL, 'i'},
-                                   {"channel", required_argument, NULL, 'c'},
-                                   {"own", required_argument, NULL, 'a'},
-                                   {"other", required_argument, NULL, 'b'},
+    struct rs_channel_layer **layers1 = NULL;
+    void **layers1_alloc = NULL;
+    int n_layers1 = 0;
+    struct rs_port_layer layer2;
+    struct rs_app_layer layer3;
+    struct rs_command_loop command_loop;
+
+    char sock_file[1024] = "/tmp/radiosocketd.sock";
+    char conf_file[1024] = "/etc/radiosocketd.conf";
+    int verbose = 0;
+
+    static struct option opts[] = {{"config", required_argument, NULL, 'c'},
                                    {"socket", required_argument, NULL, 's'},
+                                   {"verbose", no_argument, NULL, 'v'},
                                    {NULL, 0, NULL, 0}};
 
     int idx;
     int c;
-    while ((c = getopt_long(argc, argv, "a:b:c:i:p:s:", opts, &idx)) != -1) {
+    while ((c = getopt_long(argc, argv, "c:s:v", opts, &idx)) != -1) {
         switch (c) {
-        case 'p':
-            phys = atoi(optarg);
-            break;
-        case 'i':
-            strncpy(ifname, optarg, IFNAMSIZ);
-            break;
         case 's':
             strncpy(sock_file, optarg, sizeof(sock_file) - 1);
             break;
         case 'c':
-            default_channel = strtol(optarg, NULL, 16);
+            strncpy(conf_file, optarg, sizeof(conf_file) - 1);
             break;
-        case 'a':
-            own = strtol(optarg, NULL, 16);
-            break;
-        case 'b':
-            other = strtol(optarg, NULL, 16);
+        case 'v':
+            verbose = 1;
             break;
         default:
             exit(1);
@@ -70,57 +63,105 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (phys == -2) {
-        printf("Invalid phys\n");
-        exit(1);
-    }
-    if (ifname[0] == 0) {
-        printf("Invalid ifname\n");
-        exit(1);
-    }
-    if (own == 0) {
-        printf("Invalid own id\n");
-        exit(1);
-    }
-    if (other == 0) {
-        printf("Invalid other id\n");
-        exit(1);
-    }
-
-    /* set up state */
-    state.running = 1;
-    state.own_id = own;
-    state.other_id = other;
-
     /* set up log */
-    setlogmask(LOG_UPTO(LOG_DEBUG));
-    /* setlogmask(LOG_UPTO(LOG_NOTICE)); */
+    if (verbose)
+        setlogmask(LOG_UPTO(LOG_DEBUG));
+    else
+        setlogmask(LOG_UPTO(LOG_NOTICE));
 
     openlog("radiosocketd", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
     syslog(LOG_NOTICE, "Starting radiosocketd...");
 
-    /* set up channel layers */
-    struct rs_channel_layer_pcap layer1_pcap;
-    if (rs_channel_layer_pcap_init(&layer1_pcap, &state, phys, ifname)) {
-        return 0;
+    /* set up state */
+    state.running = 1;
+    config_init(&state.config);
+    if (config_read(&state.config, fopen(conf_file, "r")) != CONFIG_TRUE) {
+        printf("%s: %d\n", config_error_text(&state.config),
+               config_error_line(&state.config));
+        syslog(LOG_ERR, "Could not open config");
+
+        goto error;
     }
 
-    struct rs_channel_layer *layer1s[1] = {&layer1_pcap.super};
-    state.channel_layers = layer1s;
-    state.n_channel_layers = 1;
+    int own, other;
+    if (config_lookup_int(&state.config, "own_id", &own) != CONFIG_TRUE) {
+        syslog(LOG_ERR, "config: missing own_id");
+        config_destroy(&state.config);
+
+        goto error;
+    }
+    if (config_lookup_int(&state.config, "other_id", &other) != CONFIG_TRUE) {
+        syslog(LOG_ERR, "config: missing other_id");
+        config_destroy(&state.config);
+
+        goto error;
+    }
+    state.own_id = own;
+    state.other_id = other;
+
+    /* set up channel layers */
+    config_setting_t* cc = config_lookup(&state.config, "channels");
+    int n_channel_layers =
+        cc ? config_setting_length(cc) : 0;
+    layers1 = calloc(n_channel_layers, sizeof(void *));
+    layers1_alloc = calloc(n_channel_layers, sizeof(void *));
+    for (int i = 0; i < n_channel_layers; i++) {
+        char p[100];
+
+        int base;
+        sprintf(p, "channels.[%d].base", i);
+        config_lookup_int(&state.config, p, &base);
+
+        const char *kind = "";
+        sprintf(p, "channels.[%d].kind", i);
+        config_lookup_string(&state.config, p, &kind);
+
+        if (!strcmp(kind, "pcap")) {
+            const char *ifname;
+            sprintf(p, "channels.[%d].pcap.ifname", i);
+            if (config_lookup_string(&state.config, p, &ifname) !=
+                CONFIG_TRUE) {
+                syslog(LOG_ERR, "Need to provide ifname for pcap layer");
+                goto error;
+            }
+
+            int phys;
+            sprintf(p, "channels.[%d].pcap.phys", i);
+            if (config_lookup_int(&state.config, p, &phys) != CONFIG_TRUE) {
+                syslog(LOG_ERR, "Need to provide ifname for pcap layer");
+                goto error;
+            }
+
+
+            struct rs_channel_layer_pcap *layer1 =
+                calloc(1, sizeof(struct rs_channel_layer_pcap));
+
+            n_layers1++;
+            layers1[n_layers1 - 1] = &layer1->super;
+            layers1_alloc[n_layers1 - 1] = layer1;
+
+            if (rs_channel_layer_pcap_init(layer1, &state, base, phys,
+                                           (char *)ifname)) {
+                syslog(LOG_ERR, "Unable to initalize PCAP layer");
+                goto error;
+            }
+
+        } else {
+            syslog(LOG_ERR, "Unknown channel layer: %s", kind);
+        }
+    }
+    state.n_channel_layers = n_layers1;
+    state.channel_layers = layers1;
 
     /* set up port layer */
-    struct rs_port_layer layer2;
-    rs_port_layer_init(&layer2, &state, default_channel);
+    rs_port_layer_init(&layer2, &state);
     state.port_layer = &layer2;
 
     /* set up app layer */
-    struct rs_app_layer layer3;
     rs_app_layer_init(&layer3, &state);
     state.app_layer = &layer3;
 
     /* set up command loop */
-    struct rs_command_loop command_loop;
     rs_command_loop_init(&command_loop, sock_file);
 
     struct timespec last_loop;
@@ -138,20 +179,24 @@ int main(int argc, char **argv) {
 
         struct rs_packet *packet;
         rs_port_id_t port;
-        while (!rs_port_layer_receive(&layer2, &packet, &port)) {
-            rs_app_layer_main(&layer3, packet, port);
+        while (!rs_port_layer_receive(state.port_layer, &packet, &port)) {
+            rs_app_layer_main(state.app_layer, packet, port);
         }
-        rs_channel_layer_main(&layer1_pcap.super);
-        rs_port_layer_main(&layer2, NULL);
-        rs_app_layer_main(&layer3, NULL, 0);
+        for (int i = 0; i < state.n_channel_layers; i++) {
+            rs_channel_layer_main(state.channel_layers[i]);
+        }
+        rs_port_layer_main(state.port_layer, NULL);
+        rs_app_layer_main(state.app_layer, NULL, 0);
 
 #ifdef MAIN_PRINT_STATS
         /* Print */
         if (++printf_cnt % MAIN_PRINT_STATS_N == 0) {
             printf("\e[1;1H\e[2J============= PORT =============\n");
-            rs_port_layer_stats_printf(&layer2);
+            /* rs_port_layer_stats_printf(state.port_layer); */
             printf("============ CHANNEL ===========\n");
-            rs_channel_layer_stats_printf(&layer1_pcap.super);
+            for (int i = 0; i < state.n_channel_layers; i++) {
+                rs_channel_layer_stats_printf(state.channel_layers[i]);
+            }
         }
 #endif
 
@@ -165,7 +210,8 @@ int main(int argc, char **argv) {
             last_loop.tv_nsec;
 
         sleep.tv_nsec = nsec_diff > MAIN_LOOP_NS ? 0 : MAIN_LOOP_NS - nsec_diff;
-        if(sleep.tv_nsec) nanosleep(&sleep, &sleep);
+        if (sleep.tv_nsec)
+            nanosleep(&sleep, &sleep);
 
         last_loop = loop;
     }
@@ -173,10 +219,19 @@ int main(int argc, char **argv) {
     /* shutdown */
     syslog(LOG_NOTICE, "Shutting down radiosocketd...");
 
-    rs_command_loop_destroy(&command_loop);
-    rs_channel_layer_destroy(&layer1_pcap.super);
     rs_port_layer_destroy(&layer2);
     rs_app_layer_destroy(&layer3);
+    rs_command_loop_destroy(&command_loop);
+
+error:
+    config_destroy(&state.config);
+
+    for (int i = 0; i < n_layers1; i++) {
+        rs_channel_layer_destroy(layers1[i]);
+        free(layers1_alloc[i]);
+    }
+    free(layers1);
+    free(layers1_alloc);
 
     syslog(LOG_NOTICE, "...done");
     closelog();

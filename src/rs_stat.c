@@ -244,7 +244,8 @@ void rs_stats_packed_init(struct rs_stats_packed *packed,
 
 int rs_stats_packed_pack(struct rs_stats_packed *packed, uint8_t **buffer,
                          int *buffer_len) {
-    if(*buffer_len < 8) return -1;
+    if (*buffer_len < 8)
+        return -1;
 
     *(*buffer) = (uint8_t)(packed->rx_bits >> 8);
     *(*buffer + 1) = (uint8_t)(packed->rx_bits);
@@ -278,4 +279,17 @@ int rs_stats_packed_unpack(struct rs_stats_packed *unpacked, uint8_t **buffer,
     *buffer += 8;
 
     return 0;
+}
+
+void rs_stats_place(struct rs_stats *stats, double *into) {
+    into[0] = rs_stat_current(&stats->tx_stat_bits);
+    into[1] = rs_stat_current(&stats->tx_stat_packets);
+    into[2] = rs_stat_current(&stats->rx_stat_bits);
+    into[3] = rs_stat_current(&stats->rx_stat_packets);
+    into[4] = rs_stat_current(&stats->rx_stat_missed);
+    into[5] = rs_stat_current(&stats->rx_stat_dt);
+    into[6] = rs_stat_current(&stats->other_rx_stat_bits);
+    into[7] = rs_stat_current(&stats->other_rx_stat_packets);
+    into[8] = rs_stat_current(&stats->other_rx_stat_missed);
+    into[9] = rs_stat_current(&stats->other_rx_stat_dt);
 }

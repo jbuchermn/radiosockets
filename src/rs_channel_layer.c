@@ -8,21 +8,24 @@
 
 void rs_channel_layer_init(struct rs_channel_layer *layer,
                            struct rs_server_state *server,
+                           uint8_t ch_base,
                            struct rs_channel_layer_vtable* vtable) {
     layer->vtable = vtable;
     layer->server = server;
+    layer->ch_base = ch_base;
     layer->channels =
         calloc(rs_channel_layer_ch_n(layer), sizeof(struct rs_channel_info));
     for (int i = 0; i < rs_channel_layer_ch_n(layer); i++) {
         layer->channels[i].id = rs_channel_layer_ch(layer, i);
         layer->channels[i].is_in_use = 0;
+        layer->channels[i].tx_last_seq = 0;
         rs_stats_init(&layer->channels[i].stats);
     }
 }
 
 int rs_channel_layer_owns_channel(struct rs_channel_layer *layer,
                                   rs_channel_t channel) {
-    if ((uint8_t)(channel >> 12) != rs_channel_layer_ch_base(layer))
+    if ((uint8_t)(channel >> 12) != layer->ch_base)
         return 0;
     if (rs_channel_layer_extract(layer, channel) >=
         rs_channel_layer_ch_n(layer)) {
@@ -37,7 +40,7 @@ rs_channel_t rs_channel_layer_ch(struct rs_channel_layer *layer, int i) {
     if (i >= rs_channel_layer_ch_n(layer)) {
         syslog(LOG_ERR, "ch: Constructing invalid channel");
     }
-    return ((layer->vtable->ch_base)(layer) << 12) + i;
+    return (layer->ch_base << 12) + i;
 }
 
 uint16_t rs_channel_layer_extract(struct rs_channel_layer *layer,

@@ -11,11 +11,6 @@
 #define RS_PORT_LAYER_EOF 1
 
 /*
- * MSB xxxxxxxx xxxxxxxx LSB
- *       |        |
- *       |        +------- id
- *       +---------------- owner's server_id (the one who opened the port)
- *
  *  Port 0 is reserved for port-layer communication
  */
 typedef uint16_t rs_port_id_t;
@@ -35,8 +30,11 @@ struct rs_port_layer {
 };
 
 void rs_port_layer_init(struct rs_port_layer *layer,
-                        struct rs_server_state *server,
-                        rs_channel_t default_channel);
+                        struct rs_server_state *server);
+
+void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
+                               rs_channel_t bound_to, int owner);
+
 void rs_port_layer_destroy(struct rs_port_layer *layer);
 
 /*
@@ -61,13 +59,19 @@ int rs_port_layer_receive(struct rs_port_layer *layer,
 void rs_port_layer_main(struct rs_port_layer *layer,
                         struct rs_port_layer_packet *received);
 
-int rs_port_layer_open_port(struct rs_port_layer *layer, uint8_t id,
-                            rs_port_id_t *opened_id, rs_channel_t channel);
+void rs_port_layer_stats_printf(struct rs_port_layer *layer);
 
-void rs_port_layer_stats_printf(struct rs_port_layer* layer);
+int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
+                                 rs_channel_t new_channel);
+
+#define RS_PORT_CMD_DUMMY_SIZE 1
+#define RS_PORT_CMD_SWITCH_CHANNEL 0xCC
+#define RS_PORT_CMD_SWITCH_N_BROADCAST 10
+#define RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC 50
 
 struct rs_port {
     rs_port_id_t id;
+    int owner;
 
     struct timespec tx_last_ts;
 
@@ -78,23 +82,17 @@ struct rs_port {
 
     struct rs_stats stats;
 
-    enum {
-        RS_PORT_INITIAL,
-        RS_PORT_WAITING_ACK, /* owner is waiting for ack */
-        RS_PORT_OPENED,
-        RS_PORT_OPEN_FAILED
-    } status;
-    struct timespec last_try;
-    int retry_cnt;
+    struct {
+        enum {
+            RS_PORT_CMD_SWITCH_NONE,
+            RS_PORT_CMD_SWITCH_OWNING,
+            RS_PORT_CMD_SWITCH_FOLLOWING,
+        } state;
+        struct timespec begin;
+        struct timespec at;
+        int n_broadcasts;
+        rs_channel_t new_channel;
+    } cmd_switch_state;
 };
-
-#define RS_PORT_CMD_RETRY_CNT 10
-#define RS_PORT_CMD_RETRY_MSEC 50
-
-#define RS_PORT_CMD_DUMMY_SIZE 1
-
-#define RS_PORT_CMD_OPEN 0xFE
-#define RS_PORT_CMD_ACK_OPEN 0x0E
-
 
 #endif

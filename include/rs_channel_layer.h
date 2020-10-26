@@ -33,10 +33,13 @@ struct rs_channel_layer {
     struct rs_channel_layer_vtable *vtable;
 
     struct rs_channel_info *channels;
+
+    uint8_t ch_base;
 };
 
 void rs_channel_layer_init(struct rs_channel_layer *layer,
                            struct rs_server_state *server,
+                           uint8_t ch_base,
                            struct rs_channel_layer_vtable *vtable);
 int rs_channel_layer_owns_channel(struct rs_channel_layer *layer,
                                   rs_channel_t channel);
@@ -79,7 +82,6 @@ struct rs_channel_layer_vtable {
                     struct rs_channel_layer_packet **packet,
                     rs_channel_t channel);
 
-    uint8_t (*ch_base)(struct rs_channel_layer *layer);
     int (*ch_n)(struct rs_channel_layer *layer);
 };
 
@@ -87,9 +89,6 @@ static inline void rs_channel_layer_destroy(struct rs_channel_layer *layer) {
     (layer->vtable->destroy)(layer);
 }
 
-static inline uint8_t rs_channel_layer_ch_base(struct rs_channel_layer *layer) {
-    return (layer->vtable->ch_base)(layer);
-}
 static inline int rs_channel_layer_ch_n(struct rs_channel_layer *layer) {
     return (layer->vtable->ch_n)(layer);
 }
@@ -100,7 +99,7 @@ uint16_t rs_channel_layer_extract(struct rs_channel_layer *layer,
 void rs_channel_layer_close_all_channels(struct rs_channel_layer *layer);
 void rs_channel_layer_open_channel(struct rs_channel_layer *layer,
                                    rs_channel_t channel);
-void rs_channel_layer_stats_printf(struct rs_channel_layer* layer);
+void rs_channel_layer_stats_printf(struct rs_channel_layer *layer);
 
 struct rs_channel_info {
     rs_channel_t id;

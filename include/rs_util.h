@@ -21,7 +21,15 @@ inline uint16_t cur_msec(){
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     return (ts.tv_nsec / 1000000L) + (ts.tv_sec * 1000L);
+}
 
+inline struct timespec rs_timespec_plus_ms(struct timespec* in, double ms){
+    struct timespec res;
+    uint64_t nsec = in->tv_nsec + 1000000000L * in->tv_sec;
+    nsec += 1000000L * ms;
+    res.tv_nsec = nsec % 1000000000L;
+    res.tv_sec = nsec / 1000000000L;
+    return res;
 }
 
 #endif

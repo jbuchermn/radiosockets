@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <libconfig.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,20 +13,63 @@
 #include "rs_util.h"
 
 void rs_port_layer_init(struct rs_port_layer *layer,
-                        struct rs_server_state *server,
-                        rs_channel_t default_channel) {
+                        struct rs_server_state *server) {
     layer->server = server;
 
-    layer->ports = calloc(1, sizeof(void *));
-    layer->ports[0] = calloc(1, sizeof(struct rs_port));
-    layer->n_ports = 1;
+    layer->ports = NULL;
+    layer->n_ports = 0;
 
     /* command port */
-    layer->ports[0]->id = 0;
-    layer->ports[0]->bound_channel = default_channel;
-    layer->ports[0]->status = RS_PORT_OPENED;
-    layer->ports[0]->tx_last_seq = 0;
-    rs_stats_init(&layer->ports[0]->stats);
+    int command_channel = 0x1000;
+    config_lookup_int(&server->config, "command_channel", &command_channel);
+
+    rs_port_layer_create_port(layer, 0, command_channel, 0);
+
+    /* other ports */
+    config_setting_t* c = config_lookup(&server->config, "ports");
+    int n_ports_conf =
+        c ? config_setting_length(c) : 0;
+    for (int i = 0; i < n_ports_conf; i++) {
+        char p[100];
+
+        int id;
+        sprintf(p, "ports.[%d].id", i);
+        config_lookup_int(&server->config, p, &id);
+
+        int bound_channel;
+        sprintf(p, "ports.[%d].bound_channel", i);
+        config_lookup_int(&server->config, p, &bound_channel);
+
+        int owner = server->other_id;
+        sprintf(p, "ports.[%d].owner", i);
+        config_lookup_int(&server->config, p, &owner);
+
+        rs_port_layer_create_port(layer, id, bound_channel,
+                                  owner == server->own_id);
+    }
+}
+
+void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
+                               rs_channel_t bound_to, int owner) {
+    if (port) {
+        for (int i = 0; i < layer->n_ports; i++) {
+            if (layer->ports[i]->id == port) {
+                syslog(LOG_ERR, "Port already in use");
+                return;
+            }
+        }
+    }
+
+    struct rs_port *new_port = calloc(1, sizeof(struct rs_port));
+    new_port->id = port;
+    new_port->bound_channel = bound_to;
+    new_port->tx_last_seq = 0;
+    new_port->owner = owner;
+    rs_stats_init(&new_port->stats);
+
+    layer->n_ports++;
+    layer->ports = realloc(layer->ports, layer->n_ports * sizeof(void *));
+    layer->ports[layer->n_ports - 1] = new_port;
 }
 
 void rs_port_layer_destroy(struct rs_port_layer *layer) {
@@ -127,15 +171,15 @@ retry:
                 }
             }
 
-            /* Handle earlier updates which have been missed (channel switched /
-             * port opened) */
             if (!port) {
-                /* Could be handled gracefully */
                 syslog(LOG_ERR, "Received packet on unknown port");
                 goto retry;
             }
 
+            /* Handle earlier updates which have been missed (channel switched)
+             */
             if (port->bound_channel != channel) {
+                syslog(LOG_ERR, "Appears the port has switched channels");
                 port->bound_channel = channel;
             }
 
@@ -226,52 +270,30 @@ static void _send_command(struct rs_port_layer *layer, const uint8_t *command) {
 void rs_port_layer_main(struct rs_port_layer *layer,
                         struct rs_port_layer_packet *received) {
 
+    struct timespec now;
+    clock_gettime(CLOCK_REALTIME, &now);
     if (received) {
-        if (received->command[0] == RS_PORT_CMD_OPEN) {
-            int ack = 0;
-
+        /* switch channel */
+        if (received->command[0] == RS_PORT_CMD_SWITCH_CHANNEL) {
             rs_port_id_t port =
                 ((uint16_t)received->command[1] << 8) + received->command[2];
             rs_channel_t channel =
                 ((uint16_t)received->command[3] << 8) + received->command[4];
+            int n_broadcasts = received->command[5];
 
+            struct rs_port *p = NULL;
             for (int i = 0; i < layer->n_ports; i++) {
                 if (layer->ports[i]->id == port) {
-                    ack = 1;
-                    goto exists;
+                    p = layer->ports[i];
+                    break;
                 }
             }
-
-            struct rs_port *new_port = calloc(1, sizeof(struct rs_port));
-            new_port->id = port;
-            new_port->bound_channel = channel;
-            new_port->status = RS_PORT_OPENED;
-            rs_stats_init(&new_port->stats);
-
-            layer->n_ports++;
-            layer->ports = realloc(layer->ports, layer->n_ports * sizeof(void*));
-            layer->ports[layer->n_ports - 1] = new_port;
-            syslog(LOG_NOTICE, "Successfully opened port %d", port);
-            ack = 1;
-        exists:;
-            if (ack) {
-                uint8_t cmd[RS_PORT_LAYER_COMMAND_LENGTH] = {
-                    RS_PORT_CMD_ACK_OPEN,
-                    /* port id */
-                    received->command[1], received->command[2], 0, 0, 0, 0, 0};
-
-                _send_command(layer, cmd);
-            }
-
-        } else if (received->command[0] == RS_PORT_CMD_ACK_OPEN) {
-            rs_port_id_t port =
-                ((uint16_t)received->command[1] << 8) + received->command[2];
-            for (int i = 0; i < layer->n_ports; i++) {
-                if (layer->ports[i]->id == port &&
-                    layer->ports[i]->status == RS_PORT_WAITING_ACK) {
-                    layer->ports[i]->status = RS_PORT_OPENED;
-                    syslog(LOG_NOTICE, "Successfully opened port %d", port);
-                }
+            if (p) {
+                p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_FOLLOWING;
+                p->cmd_switch_state.at = rs_timespec_plus_ms(
+                    &now, (RS_PORT_CMD_SWITCH_N_BROADCAST - n_broadcasts) *
+                              RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC);
+                p->cmd_switch_state.new_channel = channel;
             }
         }
     } else {
@@ -282,80 +304,81 @@ void rs_port_layer_main(struct rs_port_layer *layer,
             for (int j = 0; j < layer->n_ports; j++) {
                 if (rs_channel_layer_owns_channel(
                         layer->server->channel_layers[i],
-                        layer->ports[j]->bound_channel))
+                        layer->ports[j]->bound_channel)) {
                     rs_channel_layer_open_channel(
                         layer->server->channel_layers[i],
                         layer->ports[j]->bound_channel);
+                }
             }
         }
 
-        /* Open port */
+        /* Switch channel */
         for (int i = 0; i < layer->n_ports; i++) {
-            if (layer->ports[i]->status == RS_PORT_OPENED)
+            if (layer->ports[i]->cmd_switch_state.state ==
+                RS_PORT_CMD_SWITCH_NONE)
                 continue;
 
-            uint8_t cmd_open[RS_PORT_LAYER_COMMAND_LENGTH] = {
-                RS_PORT_CMD_OPEN,
-                /* port id */
-                (uint8_t)(layer->ports[i]->id >> 8),
-                (uint8_t)layer->ports[i]->id,
-                (uint8_t)(layer->ports[i]->bound_channel >> 8),
-                (uint8_t)layer->ports[i]->bound_channel, 0, 0, 0};
+            if (layer->ports[i]->cmd_switch_state.state ==
+                    RS_PORT_CMD_SWITCH_OWNING &&
 
-            if (layer->ports[i]->status == RS_PORT_INITIAL) {
-                syslog(LOG_NOTICE, "Opening port %d", layer->ports[i]->id);
-                layer->ports[i]->status = RS_PORT_WAITING_ACK;
-                /* Open the port */
-                layer->ports[i]->retry_cnt = 0;
-                clock_gettime(CLOCK_REALTIME, &layer->ports[i]->last_try);
+                layer->ports[i]->cmd_switch_state.n_broadcasts <
+                    RS_PORT_CMD_SWITCH_N_BROADCAST &&
 
-                _send_command(layer, cmd_open);
+                msec_diff(now, layer->ports[i]->cmd_switch_state.begin) >
+                    layer->ports[i]->cmd_switch_state.n_broadcasts *
+                        RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC) {
 
-            } else if (layer->ports[i]->status == RS_PORT_WAITING_ACK &&
-                       layer->ports[i]->retry_cnt < RS_PORT_CMD_RETRY_CNT) {
-                /* Retry open */
-                struct timespec now;
-                clock_gettime(CLOCK_REALTIME, &now);
-                long msec = msec_diff(now, layer->ports[i]->last_try);
-                if (msec > RS_PORT_CMD_RETRY_MSEC) {
+                assert(sizeof(rs_port_id_t) == 2 && sizeof(rs_channel_t) == 2);
+                uint8_t cmd[RS_PORT_LAYER_COMMAND_LENGTH] = {
+                    RS_PORT_CMD_SWITCH_CHANNEL,
+                    /* port id */
+                    (uint8_t)(layer->ports[i]->id >> 8),
+                    (uint8_t)layer->ports[i]->id,
+                    /* new channel id */
+                    (uint8_t)(layer->ports[i]->bound_channel >> 8),
+                    (uint8_t)layer->ports[i]->bound_channel,
+                    /* broadcast number */
+                    layer->ports[i]->cmd_switch_state.n_broadcasts, 0, 0};
 
-                    _send_command(layer, cmd_open);
+                layer->ports[i]->cmd_switch_state.n_broadcasts++;
+                _send_command(layer, cmd);
 
-                    layer->ports[i]->retry_cnt++;
-                    clock_gettime(CLOCK_REALTIME, &layer->ports[i]->last_try);
-                }
-
-            } else if (layer->ports[i]->status == RS_PORT_WAITING_ACK &&
-                       layer->ports[i]->retry_cnt >= RS_PORT_CMD_RETRY_CNT) {
-                /* Open failed */
-                syslog(LOG_ERR, "Failed to open port %d", layer->ports[i]->id);
-                layer->ports[i]->status = RS_PORT_OPEN_FAILED;
+            } else if (msec_diff(now, layer->ports[i]->cmd_switch_state.at)) {
+                layer->ports[i]->bound_channel =
+                    layer->ports[i]->cmd_switch_state.new_channel;
+                layer->ports[i]->cmd_switch_state.state =
+                    RS_PORT_CMD_SWITCH_NONE;
             }
         }
     }
 }
 
-int rs_port_layer_open_port(struct rs_port_layer *layer, uint8_t id,
-                            rs_port_id_t *opened_id, rs_channel_t channel) {
-    rs_port_id_t new_id = ((rs_port_id_t)layer->server->own_id << 8) | id;
+int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
+                                 rs_channel_t new_channel) {
+    struct rs_port *p = NULL;
     for (int i = 0; i < layer->n_ports; i++) {
-        if (layer->ports[i]->id == new_id) {
-            syslog(LOG_ERR, "Port already in use");
-            return -1;
+        if (layer->ports[i]->id == port) {
+            p = layer->ports[i];
+            break;
         }
     }
+    if (!p) {
+        syslog(LOG_ERR, "Unknown port");
+        return -1;
+    }
+    if (!p->owner) {
+        syslog(LOG_ERR, "Channel switch can only be executed by owner");
+        return -2;
+    }
 
-    struct rs_port *new_port = calloc(1, sizeof(struct rs_port));
-    new_port->id = new_id;
-    new_port->bound_channel = channel;
-    new_port->status = RS_PORT_INITIAL;
-    rs_stats_init(&new_port->stats);
+    p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_OWNING;
+    p->cmd_switch_state.n_broadcasts = 0;
+    clock_gettime(CLOCK_REALTIME, &p->cmd_switch_state.begin);
+    p->cmd_switch_state.at = rs_timespec_plus_ms(
+        &p->cmd_switch_state.begin,
+        RS_PORT_CMD_SWITCH_N_BROADCAST * RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC);
+    p->cmd_switch_state.new_channel = new_channel;
 
-    layer->n_ports++;
-    layer->ports = realloc(layer->ports, layer->n_ports * sizeof(void*));
-    layer->ports[layer->n_ports - 1] = new_port;
-
-    *opened_id = new_id;
     return 0;
 }
 

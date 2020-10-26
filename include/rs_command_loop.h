@@ -17,13 +17,14 @@ void rs_command_loop_run(struct rs_command_loop *loop,
                          struct rs_server_state *state);
 void rs_command_loop_destroy(struct rs_command_loop *loop);
 
-#pragma pack(1)
 
 #define RS_COMMAND_LOOP_PAYLOAD_MAX 100
 
-#define RS_COMMAND_LOOP_CMD_PORT_STAT 1
-#define RS_COMMAND_LOOP_CMD_OPEN_PORT 2
+#define RS_COMMAND_LOOP_CMD_REPORT 1
+#define RS_COMMAND_LOOP_CMD_SWITCH_CHANNEL 2
 #define RS_COMMAND_LOOP_CMD_EXIT 13
+
+#pragma pack(1)
 
 struct rs_command_payload {
     uint32_t id;

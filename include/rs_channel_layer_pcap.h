@@ -37,7 +37,7 @@ struct rs_channel_layer_pcap {
  * work) or a new interface is created and other interfaces are deleted
  */
 int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
-                               struct rs_server_state *server, int phys,
-                               char *ifname);
+                               struct rs_server_state *server, uint8_t ch_base,
+                               int phys, char *ifname);
 
 #endif

@@ -18,16 +18,20 @@ struct rs_app_layer {
 void rs_app_layer_init(struct rs_app_layer *layer,
                        struct rs_server_state *server);
 
-void rs_app_layer_open_connection(struct rs_app_layer* layer,
-        rs_port_id_t port,
-        int udp_port);
-void rs_app_layer_destroy(struct rs_app_layer* layer);
-void rs_app_connection_destroy(struct rs_app_connection* connection);
+void rs_app_layer_open_connection(struct rs_app_layer *layer, rs_port_id_t port,
+                                  int udp_port, int frame_size);
+void rs_app_layer_destroy(struct rs_app_layer *layer);
+void rs_app_connection_destroy(struct rs_app_connection *connection);
 
-void rs_app_layer_main(struct rs_app_layer* layer, struct rs_packet* received, rs_port_id_t received_port);
+void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
+                       rs_port_id_t received_port);
 
 struct rs_app_connection {
     rs_port_id_t port;
+
+    uint8_t* frame_buffer;
+    uint8_t* frame_buffer_at;
+    int frame_size;
 
     int socket;
     struct sockaddr_in addr_server;

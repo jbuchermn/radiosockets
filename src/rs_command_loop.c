@@ -18,39 +18,44 @@ static void handle_command(struct rs_command_payload *command,
                            struct rs_server_state *state) {
     if (command->command == RS_COMMAND_LOOP_CMD_EXIT) {
         state->running = 0;
-    } else if (command->command == RS_COMMAND_LOOP_CMD_PORT_STAT) {
-        /* TODO Reenable stats */
-        /* rs_port_id_t port = command->payload_int[0]; */
-        /*  */
-        /* struct rs_port_channel_info *info; */
-        /* if (rs_port_layer_get_channel_info(state->port_layer, port, &info)) {
-         */
-        /*     syslog(LOG_ERR, "CMD_PORT_STAT: Invalid port"); */
-        /* } else { */
-        /*     response->payload_double[0] =
-         * rs_stat_current(&info->tx_stat_bits); */
-        /*     response->payload_double[1] = */
-        /*         rs_stat_current(&info->other_rx_stat_bits); */
-        /*     response->payload_double[2] = */
-        /*         rs_stat_current(&info->other_rx_stat_missed); */
-        /*  */
-        /*     response->payload_double[3] =
-         * rs_stat_current(&info->rx_stat_bits); */
-        /*     response->payload_double[4] = */
-        /*         rs_stat_current(&info->rx_stat_missed); */
-        /* } */
-    } else if (command->command == RS_COMMAND_LOOP_CMD_OPEN_PORT) {
-        int id = (uint8_t)command->payload_int[0];
-        int channel = (rs_channel_t)command->payload_int[1];
-        int udp_port = command->payload_int[2];
 
-        rs_port_id_t opened_id;
+    } else if (command->command == RS_COMMAND_LOOP_CMD_REPORT) {
+        int idx = 0;
+        for (int i = 0; i < state->port_layer->n_ports; i++) {
+            if ((idx + 1) * RS_STATS_PLACE_N > RS_COMMAND_LOOP_PAYLOAD_MAX)
+                break;
+
+            response->payload_char[idx] = 'P';
+            response->payload_int[idx] = state->port_layer->ports[i]->id;
+
+            rs_stats_place(&state->port_layer->ports[i]->stats,
+                           response->payload_double + (idx * RS_STATS_PLACE_N));
+            idx++;
+        }
+
+        for (int c = 0; c < state->n_channel_layers; c++) {
+            for (int ch = 0;
+                 ch < rs_channel_layer_ch_n(state->channel_layers[c]); ch++) {
+                if (state->channel_layers[c]->channels[ch].is_in_use) {
+                    response->payload_char[idx] = 'C';
+                    response->payload_int[idx] =
+                        state->channel_layers[c]->channels[ch].id;
+
+                    rs_stats_place(
+                        &state->channel_layers[c]->channels[ch].stats,
+                        response->payload_double + (idx * RS_STATS_PLACE_N));
+
+                    idx++;
+                }
+            }
+        }
+
+    } else if (command->command == RS_COMMAND_LOOP_CMD_SWITCH_CHANNEL) {
+        rs_port_id_t port = (rs_port_id_t)command->payload_int[1];
+        rs_channel_t new_channel = (rs_channel_t)command->payload_int[2];
+
         response->payload_int[0] =
-            rs_port_layer_open_port(state->port_layer, id, &opened_id, channel);
-        response->payload_int[1] = opened_id;
-        response->payload_int[2] = udp_port;
-
-        rs_app_layer_open_connection(state->app_layer, opened_id, udp_port);
+            rs_port_layer_switch_channel(state->port_layer, port, new_channel);
     }
 }
 
@@ -65,7 +70,7 @@ void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file) {
 
     /* create socket */
     if ((loop->socket_fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
-        syslog(LOG_ERR, "Could not create socket");
+        syslog(LOG_ERR, "command loop: Could not create socket");
         return;
     }
 
@@ -81,7 +86,7 @@ void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file) {
 
     /* bind to socket */
     if (bind(loop->socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        syslog(LOG_ERR, "Could not bind socket");
+        syslog(LOG_ERR, "command loop: Could not bind socket");
         return;
     }
     listen(loop->socket_fd, 3);
@@ -124,6 +129,7 @@ void rs_command_loop_run(struct rs_command_loop *loop,
             (struct rs_command_payload *)loop->buffer;
 
         struct rs_command_response_payload response;
+        memset(&response, 0, sizeof(response));
         response.id = p->id;
 
         handle_command(p, &response, state);

@@ -54,6 +54,9 @@ struct rs_stats {
     struct rs_stat other_rx_stat_dt;
 };
 
+#define RS_STATS_PLACE_N 10
+void rs_stats_place(struct rs_stats* stats, double* into);
+
 struct rs_stats_packed;
 
 void rs_stats_init(struct rs_stats *stats);

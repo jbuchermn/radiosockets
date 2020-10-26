@@ -1,6 +1,7 @@
 #ifndef SERVER_STATE_H
 #define SERVER_STATE_H
 
+#include <libconfig.h>
 #include <stdint.h>
 
 #include "rs_channel_layer.h"
@@ -14,6 +15,8 @@ typedef uint8_t rs_server_id_t;
 
 struct rs_server_state {
     int running;
+
+    config_t config;
 
     /* both ids are fixed and nonzero */
     rs_server_id_t own_id;
