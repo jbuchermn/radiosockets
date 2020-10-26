@@ -132,7 +132,6 @@ int main(int argc, char **argv) {
                 goto error;
             }
 
-
             struct rs_channel_layer_pcap *layer1 =
                 calloc(1, sizeof(struct rs_channel_layer_pcap));
 

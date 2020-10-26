@@ -81,15 +81,12 @@ void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file) {
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, sock_file, sizeof(addr.sun_path) - 1);
 
-    /* rm socket-file */
-    remove(addr.sun_path);
-
     /* bind to socket */
     if (bind(loop->socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         syslog(LOG_ERR, "command loop: Could not bind socket");
         return;
     }
-    listen(loop->socket_fd, 3);
+    listen(loop->socket_fd, 0);
 
     /* put socket into nonblocking mode */
     int flags = fcntl(loop->socket_fd, F_GETFL);
@@ -108,6 +105,7 @@ void rs_command_loop_destroy(struct rs_command_loop *loop) {
 
 void rs_command_loop_run(struct rs_command_loop *loop,
                          struct rs_server_state *state) {
+        
     /* Connect to client (non-blocking) - return if no connection */
     struct sockaddr_un client;
     unsigned int clilen = sizeof(client);
@@ -120,7 +118,6 @@ void rs_command_loop_run(struct rs_command_loop *loop,
     int nread;
     while ((nread = read(client_socket_fd, loop->buffer,
                          sizeof(struct rs_command_payload))) > 0) {
-
         if (nread != sizeof(struct rs_command_payload)) {
             continue;
         }
