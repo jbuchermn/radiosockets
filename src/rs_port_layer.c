@@ -193,6 +193,7 @@ retry:
             rs_stats_register_rx(&port->stats, bytes,
                                  unpacked.seq - port->rx_last_seq - 1,
                                  &unpacked.stats, unpacked.ts);
+            port->rx_last_seq = unpacked.seq;
 
             if (unpacked.port == 0) {
                 /* Received a command packet */
