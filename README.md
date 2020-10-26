@@ -4,10 +4,10 @@ Based on (WFB)[https://github.com/svpcom/wifibroadcast], intended as an abstract
 transmission methods
 
 ## Devices and drivers
-* rtl8188eus: (8188eu)[https://github.com/aircrack-ng/rtl8188eus] (patched)
+* rtl8188eus: [https://github.com/aircrack-ng/rtl8188eus](8188eu) (patched)
     - Be careful to only use the one virtual interface that is initally created, in order to prevent kernel-freeze upon
       deletion of other interfaces
-* rtl8812au:  (rtl88xxau)[https://github.com/aircrack-ng/rtl8812au] (patched)
+* rtl8812au:  [https://github.com/aircrack-ng/rtl8812au](rtl88xxau) (patched)
     - Be careful to only use the one virtual interface that is initally created, in order to prevent kernel-freeze upon
       deletion of other interfaces
 * rtl8192cu:  rtl8xxxu (original kernel module)
