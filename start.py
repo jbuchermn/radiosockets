@@ -22,8 +22,8 @@ if __name__ == '__main__':
     d = Daemon("./basic.conf", arg_own, arg_other)
     d.start()
 
-    mod = 1
-    sleep_s = 0.5
+    mod = 1000
+    sleep_s = 0.001
 
     if is_pi:
         mod = 500

@@ -208,8 +208,12 @@ void rs_stats_register_rx(struct rs_stats *stats, int bytes, int missed_packets,
 
     rs_stat_register(&stats->rx_stat_bits, 8 * bytes);
     rs_stat_register(&stats->rx_stat_packets, 1.0);
-    for (int i = 0; i < missed_packets; i++)
-        rs_stat_register(&stats->rx_stat_missed, 1.0);
+    if(missed_packets < 0 || missed_packets > 1000){
+        syslog(LOG_ERR, "Unexpected missed_packets reported");
+    }else{
+        for (int i = 0; i < missed_packets; i++)
+            rs_stat_register(&stats->rx_stat_missed, 1.0);
+    }
     rs_stat_register(&stats->rx_stat_missed, 0.0);
     rs_stat_register(&stats->rx_stat_dt, cur_msec() - ts_sent);
 
