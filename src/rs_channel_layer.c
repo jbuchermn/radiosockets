@@ -148,7 +148,7 @@ int rs_channel_layer_receive(struct rs_channel_layer *layer,
 }
 
 void rs_channel_layer_main(struct rs_channel_layer *layer) {
-    static uint8_t dummy[RS_CHANNEL_LAYER_CMD_DUMMY_SIZE];
+    static uint8_t dummy[RS_CHANNEL_CMD_DUMMY_SIZE];
 
     /*
      * heartbeat through used channels
@@ -160,12 +160,12 @@ void rs_channel_layer_main(struct rs_channel_layer *layer) {
         struct timespec now;
         clock_gettime(CLOCK_REALTIME, &now);
         long msec = msec_diff(now, layer->channels[j].tx_last_ts);
-        if (msec >= RS_CHANNEL_HEARTBEAT_MSEC) {
+        if (msec >= RS_CHANNEL_CMD_HEARTBEAT_MSEC) {
             struct rs_channel_layer_packet packet;
             rs_channel_layer_packet_init(&packet, NULL, NULL, dummy,
-                                         RS_CHANNEL_LAYER_CMD_DUMMY_SIZE);
+                                         RS_CHANNEL_CMD_DUMMY_SIZE);
 
-            packet.command = RS_CHANNEL_HEARTBEAT;
+            packet.command = RS_CHANNEL_CMD_HEARTBEAT;
             _transmit(layer, &packet, &layer->channels[j]);
             rs_packet_destroy(&packet.super);
         }

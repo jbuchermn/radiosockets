@@ -274,7 +274,9 @@ void rs_port_layer_main(struct rs_port_layer *layer,
     clock_gettime(CLOCK_REALTIME, &now);
     if (received) {
         /* switch channel */
-        if (received->command[0] == RS_PORT_CMD_SWITCH_CHANNEL) {
+        if (received->command[0] == RS_PORT_CMD_HEARTBEAT) {
+            /* okay */
+        }else if (received->command[0] == RS_PORT_CMD_SWITCH_CHANNEL) {
             rs_port_id_t port =
                 ((uint16_t)received->command[1] << 8) + received->command[2];
             rs_channel_t channel =
@@ -335,7 +337,8 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                     (uint8_t)(layer->ports[i]->id >> 8),
                     (uint8_t)layer->ports[i]->id,
                     /* new channel id */
-                    (uint8_t)(layer->ports[i]->cmd_switch_state.new_channel >> 8),
+                    (uint8_t)(layer->ports[i]->cmd_switch_state.new_channel >>
+                              8),
                     (uint8_t)layer->ports[i]->cmd_switch_state.new_channel,
                     /* broadcast number */
                     layer->ports[i]->cmd_switch_state.n_broadcasts, 0, 0};
@@ -349,6 +352,17 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                     layer->ports[i]->cmd_switch_state.new_channel;
                 layer->ports[i]->cmd_switch_state.state =
                     RS_PORT_CMD_SWITCH_NONE;
+            }
+        }
+
+        /* Heartbeats */
+        for (int i = 0; i < layer->n_ports; i++) {
+            long msec = msec_diff(now, layer->ports[i]->tx_last_ts);
+
+            if (msec >= RS_PORT_CMD_HEARTBEAT_MSEC) {
+                uint8_t cmd[RS_PORT_LAYER_COMMAND_LENGTH] = {
+                    RS_PORT_CMD_HEARTBEAT, 0, 0, 0, 0, 0, 0, 0};
+                _send_command(layer, cmd);
             }
         }
     }

@@ -66,9 +66,9 @@ int rs_channel_layer_receive(struct rs_channel_layer *layer,
 /*
  * Handle channel layer communication (heartbeats)
  */
-#define RS_CHANNEL_LAYER_CMD_DUMMY_SIZE 1
-#define RS_CHANNEL_HEARTBEAT 0xFD
-#define RS_CHANNEL_HEARTBEAT_MSEC 20
+#define RS_CHANNEL_CMD_DUMMY_SIZE 1
+#define RS_CHANNEL_CMD_HEARTBEAT 0xFD
+#define RS_CHANNEL_CMD_HEARTBEAT_MSEC 50
 
 void rs_channel_layer_main(struct rs_channel_layer *layer);
 
