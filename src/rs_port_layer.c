@@ -26,9 +26,8 @@ void rs_port_layer_init(struct rs_port_layer *layer,
     rs_port_layer_create_port(layer, 0, command_channel, 0);
 
     /* other ports */
-    config_setting_t* c = config_lookup(&server->config, "ports");
-    int n_ports_conf =
-        c ? config_setting_length(c) : 0;
+    config_setting_t *c = config_lookup(&server->config, "ports");
+    int n_ports_conf = c ? config_setting_length(c) : 0;
     for (int i = 0; i < n_ports_conf; i++) {
         char p[100];
 
@@ -336,15 +335,16 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                     (uint8_t)(layer->ports[i]->id >> 8),
                     (uint8_t)layer->ports[i]->id,
                     /* new channel id */
-                    (uint8_t)(layer->ports[i]->bound_channel >> 8),
-                    (uint8_t)layer->ports[i]->bound_channel,
+                    (uint8_t)(layer->ports[i]->cmd_switch_state.new_channel >> 8),
+                    (uint8_t)layer->ports[i]->cmd_switch_state.new_channel,
                     /* broadcast number */
                     layer->ports[i]->cmd_switch_state.n_broadcasts, 0, 0};
 
                 layer->ports[i]->cmd_switch_state.n_broadcasts++;
                 _send_command(layer, cmd);
 
-            } else if (msec_diff(now, layer->ports[i]->cmd_switch_state.at)) {
+            } else if (msec_diff(now, layer->ports[i]->cmd_switch_state.at) >
+                       0) {
                 layer->ports[i]->bound_channel =
                     layer->ports[i]->cmd_switch_state.new_channel;
                 layer->ports[i]->cmd_switch_state.state =

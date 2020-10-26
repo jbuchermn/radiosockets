@@ -50,7 +50,7 @@ if __name__ == '__main__':
                 for st in stat:
                     print("%10s: %s" % (st['title'], st['stats']))
 
-            if c%int(30 / sleep_s) == 0 and not is_pi:
+            if c == int(10 / sleep_s) and not is_pi:
                 print("Channel Switch")
                 d.cmd_switch_channel(1, 0x1004)
 
