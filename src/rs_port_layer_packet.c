@@ -16,6 +16,13 @@ void rs_port_layer_packet_pack_header(struct rs_packet *super, uint8_t **buffer,
                                       int *buffer_len) {
     struct rs_port_layer_packet *packet = rs_cast(rs_port_layer_packet, super);
 
+    /* command */
+    if (*buffer_len < 1)
+        return;
+    (**buffer) = packet->command;
+    (*buffer)++;
+    (*buffer_len)--;
+
     /* port */
     if (*buffer_len < sizeof(rs_port_id_t))
         return;
@@ -35,21 +42,22 @@ void rs_port_layer_packet_pack_header(struct rs_packet *super, uint8_t **buffer,
     }
 
     /* ts */
-    if(*buffer_len < sizeof(uint16_t)) return;
+    if (*buffer_len < sizeof(uint16_t))
+        return;
     for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
         (**buffer) = (uint8_t)(packet->ts >> (8 * i));
         (*buffer)++;
         (*buffer_len)--;
     }
 
+    if (rs_stats_packed_pack(&packet->stats, buffer, buffer_len))
+        return;
 
-    if(rs_stats_packed_pack(&packet->stats, buffer, buffer_len)) return;
-
-    if (packet->port == 0) {
+    if (packet->command != 0) {
         for (int i = 0; i < RS_PORT_LAYER_COMMAND_LENGTH; i++) {
             if ((*buffer_len) == 0)
                 return;
-            (**buffer) = packet->command[i];
+            (**buffer) = packet->command_payload[i];
             (*buffer)++;
             (*buffer_len)--;
         }
@@ -63,9 +71,10 @@ void rs_port_layer_packet_init(struct rs_port_layer_packet *packet,
     rs_packet_init(&packet->super, payload_ownership, payload_packet,
                    payload_data, payload_data_len);
     packet->super.vtable = &vtable;
+    packet->command = 0;
     packet->port = 0;
     packet->seq = 0;
-    memset(packet->command, 0, sizeof(packet->command));
+    memset(packet->command_payload, 0, sizeof(packet->command_payload));
 }
 
 int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
@@ -75,6 +84,13 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
     rs_port_layer_packet_init(packet, from_packet->payload_ownership, NULL,
                               from_packet->payload_data,
                               from_packet->payload_data_len);
+
+    /* command */
+    if (packet->super.payload_data_len < 1)
+        return -1;
+    packet->command = *packet->super.payload_data;
+    packet->super.payload_data++;
+    packet->super.payload_data_len--;
 
     /* port */
     if (packet->super.payload_data_len < sizeof(rs_port_id_t))
@@ -102,22 +118,22 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
         return -1;
     packet->ts = 0;
     for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
-        packet->ts += ((uint16_t)(*packet->super.payload_data))
-                       << (8 * i);
+        packet->ts += ((uint16_t)(*packet->super.payload_data)) << (8 * i);
         packet->super.payload_data++;
         packet->super.payload_data_len--;
     }
 
-    if(rs_stats_packed_unpack(&packet->stats, &packet->super.payload_data,
-                           &packet->super.payload_data_len)) return -1;
+    if (rs_stats_packed_unpack(&packet->stats, &packet->super.payload_data,
+                               &packet->super.payload_data_len))
+        return -1;
 
-    /* Possibly set command */
-    if (packet->port == 0) {
+    /* Possibly set command_payload */
+    if (packet->command != 0) {
         for (int i = 0; i < RS_PORT_LAYER_COMMAND_LENGTH; i++) {
             if (packet->super.payload_data_len == 0)
                 return -1;
 
-            packet->command[i] = (uint8_t)(*packet->super.payload_data);
+            packet->command_payload[i] = (uint8_t)(*packet->super.payload_data);
             packet->super.payload_data++;
             packet->super.payload_data_len--;
         }

@@ -123,7 +123,7 @@ int rs_channel_layer_receive(struct rs_channel_layer *layer,
 
 
     if (unpacked->command) {
-        if (unpacked->command == RS_CHANNEL_HEARTBEAT) {
+        if (unpacked->command == RS_CHANNEL_CMD_HEARTBEAT) {
             /* okay */
         } else {
             syslog(LOG_ERR, "Unknown channel layer command %02x",

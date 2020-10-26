@@ -19,13 +19,7 @@ void rs_port_layer_init(struct rs_port_layer *layer,
     layer->ports = NULL;
     layer->n_ports = 0;
 
-    /* command port */
-    int command_channel = 0x1000;
-    config_lookup_int(&server->config, "command_channel", &command_channel);
-
-    rs_port_layer_create_port(layer, 0, command_channel, 0);
-
-    /* other ports */
+    /* ports */
     config_setting_t *c = config_lookup(&server->config, "ports");
     int n_ports_conf = c ? config_setting_length(c) : 0;
     for (int i = 0; i < n_ports_conf; i++) {
@@ -109,11 +103,6 @@ int _transmit(struct rs_port_layer *layer, struct rs_port_layer_packet *packet,
 int rs_port_layer_transmit(struct rs_port_layer *layer,
                            struct rs_packet *send_packet, rs_port_id_t port) {
 
-    if (!port) {
-        syslog(LOG_ERR, "Wrong API to submit command packets");
-        return -1;
-    }
-
     struct rs_port *p = NULL;
     for (int i = 0; i < layer->n_ports; i++) {
         if (layer->ports[i]->id == port) {
@@ -194,7 +183,7 @@ retry:
                                  &unpacked.stats, unpacked.ts);
             port->rx_last_seq = unpacked.seq;
 
-            if (unpacked.port == 0) {
+            if (unpacked.command) {
                 /* Received a command packet */
                 rs_port_layer_main(layer, &unpacked);
                 rs_packet_destroy(&unpacked.super);
@@ -253,16 +242,18 @@ int rs_port_layer_receive(struct rs_port_layer *layer,
     return RS_PORT_LAYER_EOF;
 }
 
-static void _send_command(struct rs_port_layer *layer, const uint8_t *command) {
+static void _send_command(struct rs_port_layer *layer, struct rs_port *port,
+                          uint8_t command, const uint8_t *command_payload) {
     static uint8_t dummy[RS_PORT_CMD_DUMMY_SIZE];
 
     struct rs_port_layer_packet packet;
     rs_port_layer_packet_init(&packet, NULL, NULL, dummy,
                               RS_PORT_CMD_DUMMY_SIZE);
-    memcpy(packet.command, command, RS_PORT_LAYER_COMMAND_LENGTH);
+    memcpy(packet.command_payload, command_payload, RS_PORT_LAYER_COMMAND_LENGTH);
+    packet.command = command;
     packet.super.payload_ownership = NULL;
 
-    _transmit(layer, &packet, layer->ports[0]);
+    _transmit(layer, &packet, port);
 
     rs_packet_destroy(&packet.super);
 }
@@ -273,19 +264,21 @@ void rs_port_layer_main(struct rs_port_layer *layer,
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
     if (received) {
-        /* switch channel */
-        if (received->command[0] == RS_PORT_CMD_HEARTBEAT) {
+        /* heartbeat */
+        if (received->command == RS_PORT_CMD_HEARTBEAT) {
             /* okay */
-        }else if (received->command[0] == RS_PORT_CMD_SWITCH_CHANNEL) {
-            rs_port_id_t port =
-                ((uint16_t)received->command[1] << 8) + received->command[2];
+
+            /* switch channel */
+        } else if (received->command == RS_PORT_CMD_SWITCH_CHANNEL) {
+
             rs_channel_t channel =
-                ((uint16_t)received->command[3] << 8) + received->command[4];
-            int n_broadcasts = received->command[5];
+                ((uint16_t)received->command_payload[0] << 8) +
+                received->command_payload[1];
+            int n_broadcasts = received->command_payload[2];
 
             struct rs_port *p = NULL;
             for (int i = 0; i < layer->n_ports; i++) {
-                if (layer->ports[i]->id == port) {
+                if (layer->ports[i]->id == received->port) {
                     p = layer->ports[i];
                     break;
                 }
@@ -332,19 +325,17 @@ void rs_port_layer_main(struct rs_port_layer *layer,
 
                 assert(sizeof(rs_port_id_t) == 2 && sizeof(rs_channel_t) == 2);
                 uint8_t cmd[RS_PORT_LAYER_COMMAND_LENGTH] = {
-                    RS_PORT_CMD_SWITCH_CHANNEL,
-                    /* port id */
-                    (uint8_t)(layer->ports[i]->id >> 8),
-                    (uint8_t)layer->ports[i]->id,
                     /* new channel id */
                     (uint8_t)(layer->ports[i]->cmd_switch_state.new_channel >>
                               8),
                     (uint8_t)layer->ports[i]->cmd_switch_state.new_channel,
                     /* broadcast number */
-                    layer->ports[i]->cmd_switch_state.n_broadcasts, 0, 0};
+                    layer->ports[i]->cmd_switch_state.n_broadcasts, 0, 0, 0, 0,
+                    0};
 
                 layer->ports[i]->cmd_switch_state.n_broadcasts++;
-                _send_command(layer, cmd);
+                _send_command(layer, layer->ports[i],
+                              RS_PORT_CMD_SWITCH_CHANNEL, cmd);
 
             } else if (msec_diff(now, layer->ports[i]->cmd_switch_state.at) >
                        0) {
@@ -360,9 +351,10 @@ void rs_port_layer_main(struct rs_port_layer *layer,
             long msec = msec_diff(now, layer->ports[i]->tx_last_ts);
 
             if (msec >= RS_PORT_CMD_HEARTBEAT_MSEC) {
-                uint8_t cmd[RS_PORT_LAYER_COMMAND_LENGTH] = {
-                    RS_PORT_CMD_HEARTBEAT, 0, 0, 0, 0, 0, 0, 0};
-                _send_command(layer, cmd);
+                uint8_t cmd[RS_PORT_LAYER_COMMAND_LENGTH] = {0, 0, 0, 0,
+                                                             0, 0, 0, 0};
+                _send_command(layer, layer->ports[i], RS_PORT_CMD_HEARTBEAT,
+                              cmd);
             }
         }
     }

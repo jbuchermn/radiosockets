@@ -12,11 +12,13 @@ struct rs_port_layer_packet {
     struct rs_packet super;
 
     rs_port_id_t port;
+    uint8_t command;
     rs_port_layer_seq_t seq;
     uint16_t ts; /* LSBs of current unix timestamp in milliseconds */
     struct rs_stats_packed stats;
 
-    uint8_t command[RS_PORT_LAYER_COMMAND_LENGTH];
+    /* Only if command != 0 */
+    uint8_t command_payload[RS_PORT_LAYER_COMMAND_LENGTH];
 };
 
 void rs_port_layer_packet_init(struct rs_port_layer_packet *packet,
