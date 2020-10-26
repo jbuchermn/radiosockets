@@ -51,8 +51,8 @@ static void handle_command(struct rs_command_payload *command,
         }
 
     } else if (command->command == RS_COMMAND_LOOP_CMD_SWITCH_CHANNEL) {
-        rs_port_id_t port = (rs_port_id_t)command->payload_int[1];
-        rs_channel_t new_channel = (rs_channel_t)command->payload_int[2];
+        rs_port_id_t port = (rs_port_id_t)command->payload_int[0];
+        rs_channel_t new_channel = (rs_channel_t)command->payload_int[1];
 
         response->payload_int[0] =
             rs_port_layer_switch_channel(state->port_layer, port, new_channel);

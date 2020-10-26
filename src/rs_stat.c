@@ -182,6 +182,8 @@ void rs_stats_init(struct rs_stats *stats) {
                  1000. / RS_STAT_DT_MSEC);
     rs_stat_init(&stats->tx_stat_packets, RS_STAT_AGG_COUNT, "TX", "pps",
                  1000. / RS_STAT_DT_MSEC);
+    rs_stat_init(&stats->tx_stat_errors, RS_STAT_AGG_COUNT, "TX", "eps",
+                 1000. / RS_STAT_DT_MSEC);
 
     rs_stat_init(&stats->rx_stat_bits, RS_STAT_AGG_SUM, "RX", "bps",
                  1000. / RS_STAT_DT_MSEC);
@@ -232,6 +234,7 @@ void rs_stats_printf(struct rs_stats *stats) {
     printf("\n");
     rs_stat_printf(&stats->tx_stat_packets);
     rs_stat_printf(&stats->rx_stat_packets);
+    rs_stat_printf(&stats->tx_stat_errors);
     rs_stat_printf(&stats->rx_stat_missed);
     printf("\n");
     rs_stat_printf(&stats->other_rx_stat_bits);
@@ -288,12 +291,13 @@ int rs_stats_packed_unpack(struct rs_stats_packed *unpacked, uint8_t **buffer,
 void rs_stats_place(struct rs_stats *stats, double *into) {
     into[0] = rs_stat_current(&stats->tx_stat_bits);
     into[1] = rs_stat_current(&stats->tx_stat_packets);
-    into[2] = rs_stat_current(&stats->rx_stat_bits);
-    into[3] = rs_stat_current(&stats->rx_stat_packets);
-    into[4] = rs_stat_current(&stats->rx_stat_missed);
-    into[5] = rs_stat_current(&stats->rx_stat_dt);
-    into[6] = rs_stat_current(&stats->other_rx_stat_bits);
-    into[7] = rs_stat_current(&stats->other_rx_stat_packets);
-    into[8] = rs_stat_current(&stats->other_rx_stat_missed);
-    into[9] = rs_stat_current(&stats->other_rx_stat_dt);
+    into[2] = rs_stat_current(&stats->tx_stat_errors);
+    into[3] = rs_stat_current(&stats->rx_stat_bits);
+    into[4] = rs_stat_current(&stats->rx_stat_packets);
+    into[5] = rs_stat_current(&stats->rx_stat_missed);
+    into[6] = rs_stat_current(&stats->rx_stat_dt);
+    into[7] = rs_stat_current(&stats->other_rx_stat_bits);
+    into[8] = rs_stat_current(&stats->other_rx_stat_packets);
+    into[9] = rs_stat_current(&stats->other_rx_stat_missed);
+    into[10] = rs_stat_current(&stats->other_rx_stat_dt);
 }

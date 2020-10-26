@@ -540,7 +540,6 @@ static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
     rs_packet_pack(packet, &tx_ptr, &tx_len);
 
     if (pcap_inject(layer->pcap, tx_buf, tx_ptr - tx_buf) != tx_ptr - tx_buf) {
-        syslog(LOG_ERR, "Could not inject packet");
         return -1;
     }
 

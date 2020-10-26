@@ -72,6 +72,8 @@ static int _transmit(struct rs_channel_layer *layer,
 
         /* Register stats */
         rs_stats_register_tx(&info->stats, res);
+    }else{
+        rs_stat_register(&info->stats.tx_stat_errors, 1.0);
     }
 
     return res;

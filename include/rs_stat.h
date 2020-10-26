@@ -42,6 +42,7 @@ struct rs_stats {
      * is excluding headers */
     struct rs_stat tx_stat_bits;
     struct rs_stat tx_stat_packets;
+    struct rs_stat tx_stat_errors;
 
     struct rs_stat rx_stat_bits;
     struct rs_stat rx_stat_packets;
@@ -54,7 +55,7 @@ struct rs_stats {
     struct rs_stat other_rx_stat_dt;
 };
 
-#define RS_STATS_PLACE_N 10
+#define RS_STATS_PLACE_N 11
 void rs_stats_place(struct rs_stats* stats, double* into);
 
 struct rs_stats_packed;

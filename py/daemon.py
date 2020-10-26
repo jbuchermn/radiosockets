@@ -9,6 +9,7 @@ from .pcap_conf import pcap_conf_compile
 CMD_PAYLOAD_MAX = 100
 
 CMD_REPORT = 1
+CMD_REPORT_N = 11
 CMD_SWITCH_CHANNEL = 2
 CMD_EXIT = 13
 
@@ -125,8 +126,12 @@ class Daemon:
         n, s, d = self.cmd(CMD_REPORT)
         return [{
             'title': '%s%i' % (s[i], n[i]),
-            'stats': d[10*i:10*(i+1)]
+            'stats': d[CMD_REPORT_N*i:CMD_REPORT_N*(i+1)]
         } for i, _ in enumerate(s)]
+
+    def cmd_switch_channel(self, port, new_channel):
+        n, _, _ = self.cmd(CMD_SWITCH_CHANNEL, [port, new_channel])
+        return n[0]
 
     def cmd_close(self):
         self.cmd(CMD_EXIT)
