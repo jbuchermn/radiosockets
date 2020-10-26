@@ -87,6 +87,7 @@ int _transmit(struct rs_port_layer *layer, struct rs_port_layer_packet *packet,
     rs_stats_packed_init(&packet->stats, &port->stats);
 
     int bytes;
+    packet->port = port->id;
     packet->seq = port->tx_last_seq + 1;
     packet->ts = cur_msec();
     if ((bytes = rs_channel_layer_transmit(ch, &packet->super,
@@ -117,7 +118,6 @@ int rs_port_layer_transmit(struct rs_port_layer *layer,
 
     struct rs_port_layer_packet packed;
     rs_port_layer_packet_init(&packed, NULL, send_packet, NULL, 0);
-    packed.port = port;
 
     int bytes = _transmit(layer, &packed, p);
 
@@ -267,6 +267,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
         /* heartbeat */
         if (received->command == RS_PORT_CMD_HEARTBEAT) {
             /* okay */
+            printf("HEARTBEAT: %d\n", received->port);
 
             /* switch channel */
         } else if (received->command == RS_PORT_CMD_SWITCH_CHANNEL) {

@@ -90,9 +90,9 @@ class Daemon:
                 outf.write(conf)
 
         for l in cmd("ps ax").split("\n"):
-            if 'radiosocketd' in l:
+            if './radiosocketd' in l:
                 pid = int(l.split(None, 1)[0])
-                print("Found zombie process: %d", pid)
+                print("Found zombie process: %d" % pid)
                 if input("Kill? [Y/n] ").strip() not in ["n", "N"]:
                     os.kill(pid, signal.SIGINT)
 
