@@ -6,6 +6,12 @@ from subprocess import Popen, PIPE
 
 from .pcap_conf import pcap_conf_compile
 
+
+def cmd(cmd):
+    p = Popen(cmd.split(), stdout=PIPE)
+    return p.communicate()[0].decode()
+
+
 CMD_PAYLOAD_MAX = 100
 
 CMD_REPORT = 1
@@ -83,9 +89,14 @@ class Daemon:
             with open(self.conf, "w") as outf:
                 outf.write(conf)
 
-        input("Confirm? ")
+        for l in cmd("ps ax").split("\n"):
+            if 'radiosocketd' in l:
+                pid = int(l.split(None, 1)[0])
+                print("Found zombie process: %d", pid)
+                if input("Kill? [Y/n] ").strip() not in ["n", "N"]:
+                    os.kill(pid, signal.SIGINT)
 
-        # TODO: Check if zombies are running
+        input("Confirm? ")
         self.daemon = Popen(("sudo ./radiosocketd -v -c %s -s %s" %
                              (self.conf, self.socket)).split())
 

@@ -1,5 +1,6 @@
 from subprocess import Popen, PIPE
 
+
 def cmd(cmd):
     p = Popen(cmd.split(), stdout=PIPE)
     return p.communicate()[0].decode()
@@ -47,6 +48,7 @@ def _retrieve_physical_devices():
 
     return phys
 
+
 def pcap_conf_compile():
     phys = _retrieve_physical_devices()
 
@@ -75,7 +77,12 @@ def pcap_conf_compile():
             exit(1)
         arg_ifname = phys.interfaces[0]
 
-    # TODO: Check for NetworkManager conf
+    for l in cmd("ps ax").split("\n"):
+        if 'networkman' in l.lower():
+            print("WARNING! NetworkManager is running! This is usually not a " + 
+                  "good idea, as randomly monitor mode will stop working on " +
+                  "some cards. Be sure to either stop NetworkManager or have " +
+                  "it ignore the devices in use")
+            input("Okay? ")
 
     return {"<phys/>": phys.idx, "<ifname/>": arg_ifname}
-
