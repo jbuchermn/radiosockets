@@ -22,12 +22,12 @@ if __name__ == '__main__':
     d = Daemon("./basic.conf", arg_own, arg_other)
     d.start()
 
-    mod = 1000
-    sleep_s = 0.001
+    mod = 20
+    sleep_s = 0.05
 
     if is_pi:
-        mod = 500
-        sleep_s = 0.002
+        mod = 5000
+        sleep_s = 0.0002
 
     try:
         time.sleep(2)

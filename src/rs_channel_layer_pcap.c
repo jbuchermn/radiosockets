@@ -181,7 +181,7 @@ static int nl_cb_new_interface(struct nl_msg *msg, void *arg) {
 static int nl_cb_default(struct nl_msg *msg, void *arg) { return NL_OK; }
 
 static void nl_set_channel(struct rs_channel_layer_pcap *layer,
-                           uint16_t channel) {
+                           int channel /* 0 - 10...12 depending on country */) {
     if (channel == layer->on_channel)
         return;
 
@@ -406,8 +406,8 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     pcap_freecode(&bpfprogram);
 
     /* set initial channel */
-    layer->on_channel = 0;
-    nl_set_channel(layer, 0x06);
+    layer->on_channel = 1; /* Ensure the channel is set */
+    nl_set_channel(layer, 0);
 
     return 0;
 }
@@ -499,7 +499,8 @@ static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
         syslog(LOG_ERR, "Attempting to send packet through wrong channel");
         return -1;
     }
-    nl_set_channel(layer, rs_channel_layer_extract(&layer->super, channel));
+    int chan = rs_channel_layer_extract(&layer->super, channel);
+    nl_set_channel(layer, chan%10);
 
     uint8_t tx_buf[RS_PCAP_TX_BUFSIZE];
     uint8_t *tx_ptr = tx_buf;
@@ -516,7 +517,7 @@ static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
     // https://en.wikipedia.org/wiki/IEEE_802.11n-2009#Data_rates
     tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_BW_20;
     /* tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_SGI; */
-    tx_ptr[16] = 0;
+    tx_ptr[16] = chan/10;
 
     tx_ptr += sizeof(tx_radiotap_header);
     tx_len -= sizeof(tx_radiotap_header);
@@ -555,7 +556,8 @@ static int _receive(struct rs_channel_layer *super,
         return -1;
     }
     if (channel) {
-        nl_set_channel(layer, rs_channel_layer_extract(&layer->super, channel));
+        int chan = rs_channel_layer_extract(&layer->super, channel);
+        nl_set_channel(layer, chan%10);
     }
 
     struct pcap_pkthdr header;
@@ -568,10 +570,10 @@ static int _receive(struct rs_channel_layer *super,
             header.caplen, NULL);
 
         int flags = -1;
-        int mcs_known = -1;
-        int mcs_flags = -1;
-        int mcs = -1;
-        int rate = -1;
+        /* int mcs_known = -1; */
+        /* int mcs_flags = -1; */
+        /* int mcs = -1; */
+        /* int rate = -1; */
         /* int chan = -1; */
         /* int chan_flags = -1; */
         /* int antenna = -1; */
@@ -584,14 +586,14 @@ static int _receive(struct rs_channel_layer *super,
             case IEEE80211_RADIOTAP_FLAGS:
                 flags = *(uint8_t *)(it.this_arg);
                 break;
-            case IEEE80211_RADIOTAP_MCS:
-                mcs_known = *(uint8_t *)(it.this_arg);
-                mcs_flags = *(((uint8_t *)(it.this_arg)) + 1);
-                mcs = *(((uint8_t *)(it.this_arg)) + 2);
-                break;
-            case IEEE80211_RADIOTAP_RATE:
-                rate = *(uint8_t *)(it.this_arg);
-                break;
+            /* case IEEE80211_RADIOTAP_MCS: */
+            /*     mcs_known = *(uint8_t *)(it.this_arg); */
+            /*     mcs_flags = *(((uint8_t *)(it.this_arg)) + 1); */
+            /*     mcs = *(((uint8_t *)(it.this_arg)) + 2); */
+            /*     break; */
+            /* case IEEE80211_RADIOTAP_RATE: */
+            /*     rate = *(uint8_t *)(it.this_arg); */
+            /*     break; */
                 /* case IEEE80211_RADIOTAP_CHANNEL: */
                 /*     chan = get_unaligned((uint16_t *)(it.this_arg)); */
                 /*     chan_flags = get_unaligned(((uint16_t *)(it.this_arg)) +
@@ -606,7 +608,7 @@ static int _receive(struct rs_channel_layer *super,
         }
 
         /* syslog(LOG_DEBUG, "rate: %d known %02x flags %02x mcs %d", rate, */
-        /*        mcs_known, mcs_flags, mcs); */
+               /* mcs_known, mcs_flags, mcs); */
         if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) {
             syslog(LOG_DEBUG, "Received bad FCS packet");
             return RS_CHANNEL_LAYER_BADFCS;
@@ -649,7 +651,10 @@ static int _receive(struct rs_channel_layer *super,
     return RS_CHANNEL_LAYER_EOF;
 }
 
-int rs_channel_layer_pcap_ch_n(struct rs_channel_layer *super) { return 12; }
+int rs_channel_layer_pcap_ch_n(struct rs_channel_layer *super) {
+    /* MCS = 0..7, for each channel 0-9 */
+    return 70; 
+}
 
 static struct rs_channel_layer_vtable vtable = {
     .destroy = rs_channel_layer_pcap_destroy,
