@@ -83,7 +83,7 @@ void rs_app_layer_open_connection(struct rs_app_layer *layer, rs_port_id_t port,
     new_conn->port = port;
 
     new_conn->frame_size = frame_size;
-    new_conn->frame_buffer = calloc(0, new_conn->frame_size);
+    new_conn->frame_buffer = calloc(new_conn->frame_size, sizeof(uint8_t));
     new_conn->frame_buffer_at = new_conn->frame_buffer;
 
     new_conn->socket = sock;
@@ -111,6 +111,7 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
     } else {
         for (int i = 0; i < layer->n_connections; i++) {
             socklen_t slen;
+
             int recv_len = recvfrom(
                 layer->connections[i]->socket,
                 layer->connections[i]->frame_buffer_at,
@@ -131,6 +132,7 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
             if (layer->connections[i]->frame_buffer_at -
                     layer->connections[i]->frame_buffer ==
                 layer->connections[i]->frame_size) {
+
                 struct rs_packet packet;
                 rs_packet_init(&packet, NULL, NULL,
                                layer->connections[i]->frame_buffer,
@@ -138,8 +140,10 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
                 rs_port_layer_transmit(layer->server->port_layer, &packet,
                                        layer->connections[i]->port);
                 rs_packet_destroy(&packet);
+
                 layer->connections[i]->frame_buffer_at =
                     layer->connections[i]->frame_buffer;
+
             }
         }
     }
