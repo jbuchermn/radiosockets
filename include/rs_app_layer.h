@@ -3,6 +3,7 @@
 
 #include <arpa/inet.h>
 
+#include "rs_stat.h"
 #include "rs_port_layer.h"
 
 struct rs_server_state;
@@ -26,12 +27,18 @@ void rs_app_connection_destroy(struct rs_app_connection *connection);
 void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
                        rs_port_id_t received_port);
 
+#define RS_APP_CONNECTION_BUFFER 10
+
 struct rs_app_connection {
     rs_port_id_t port;
-
-    uint8_t* frame_buffer;
-    uint8_t* frame_buffer_at;
     int frame_size;
+
+    uint8_t* buffer;
+    int buffer_begin_at;
+    int buffer_at;
+    int buffer_size;
+
+    struct rs_stat stat;
 
     int socket;
     struct sockaddr_in addr_server;

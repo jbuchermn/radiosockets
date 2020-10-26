@@ -19,9 +19,8 @@ void rs_app_layer_init(struct rs_app_layer *layer,
     layer->connections = NULL;
     layer->n_connections = 0;
 
-    config_setting_t* c = config_lookup(&server->config, "apps");
-    int n_conn_conf =
-        c ? config_setting_length(c) : 0;
+    config_setting_t *c = config_lookup(&server->config, "apps");
+    int n_conn_conf = c ? config_setting_length(c) : 0;
     for (int i = 0; i < n_conn_conf; i++) {
         char p[100];
 
@@ -43,7 +42,6 @@ void rs_app_layer_init(struct rs_app_layer *layer,
 
 void rs_app_layer_open_connection(struct rs_app_layer *layer, rs_port_id_t port,
                                   int udp_port, int frame_size) {
-
 
     /* open udp socket */
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -80,11 +78,14 @@ void rs_app_layer_open_connection(struct rs_app_layer *layer, rs_port_id_t port,
     layer->connections[layer->n_connections - 1] =
         (new_conn = calloc(1, sizeof(struct rs_app_connection)));
 
+    rs_stat_init(&new_conn->stat, RS_STAT_AGG_SUM, "UDP", "bps",
+                 1000. / RS_STAT_DT_MSEC);
     new_conn->port = port;
-
     new_conn->frame_size = frame_size;
-    new_conn->frame_buffer = calloc(new_conn->frame_size, sizeof(uint8_t));
-    new_conn->frame_buffer_at = new_conn->frame_buffer;
+    new_conn->buffer_size = RS_APP_CONNECTION_BUFFER * new_conn->frame_size;
+    new_conn->buffer = calloc(new_conn->buffer_size, sizeof(uint8_t));
+    new_conn->buffer_begin_at = 0;
+    new_conn->buffer_at = 0;
 
     new_conn->socket = sock;
     new_conn->addr_server = addr_server;
@@ -112,38 +113,42 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
         for (int i = 0; i < layer->n_connections; i++) {
             socklen_t slen;
 
-            int recv_len = recvfrom(
-                layer->connections[i]->socket,
-                layer->connections[i]->frame_buffer_at,
-                layer->connections[i]->frame_size -
-                    (layer->connections[i]->frame_buffer_at -
-                     layer->connections[i]->frame_buffer),
-                0, (struct sockaddr *)&layer->connections[i]->addr_client,
-                &slen);
+            struct rs_app_connection *conn = layer->connections[i];
+
+            int recv_len =
+                recvfrom(conn->socket, conn->buffer + conn->buffer_at,
+                         conn->buffer_size - conn->buffer_at, 0,
+                         (struct sockaddr *)&conn->addr_client, &slen);
 
             if (recv_len < 0) {
                 continue;
             }
+            /* We have a client */
+            conn->addr_client_len = slen;
 
-            layer->connections[i]->frame_buffer_at += recv_len;
+            conn->buffer_at += recv_len;
+            rs_stat_register(&conn->stat, 8 * recv_len);
 
-            layer->connections[i]->addr_client_len = slen;
-
-            if (layer->connections[i]->frame_buffer_at -
-                    layer->connections[i]->frame_buffer ==
-                layer->connections[i]->frame_size) {
+            while (conn->buffer_at - conn->buffer_begin_at >=
+                   conn->frame_size) {
 
                 struct rs_packet packet;
                 rs_packet_init(&packet, NULL, NULL,
-                               layer->connections[i]->frame_buffer,
-                               layer->connections[i]->frame_size);
+                               conn->buffer + conn->buffer_begin_at,
+                               conn->frame_size);
                 rs_port_layer_transmit(layer->server->port_layer, &packet,
-                                       layer->connections[i]->port);
+                                       conn->port);
                 rs_packet_destroy(&packet);
 
-                layer->connections[i]->frame_buffer_at =
-                    layer->connections[i]->frame_buffer;
+                conn->buffer_begin_at += conn->frame_size;
+            }
 
+            if (conn->buffer_begin_at) {
+                memcpy(conn->buffer, conn->buffer + conn->buffer_begin_at,
+                       sizeof(uint8_t) *
+                           (conn->buffer_at - conn->buffer_begin_at));
+                conn->buffer_at -= conn->buffer_begin_at;
+                conn->buffer_begin_at = 0;
             }
         }
     }
@@ -156,7 +161,7 @@ void rs_app_connection_destroy(struct rs_app_connection *connection) {
 void rs_app_layer_destroy(struct rs_app_layer *layer) {
     for (int i = 0; i < layer->n_connections; i++) {
         rs_app_connection_destroy(layer->connections[i]);
-        free(layer->connections[i]->frame_buffer);
+        free(layer->connections[i]->buffer);
         free(layer->connections[i]);
     }
 
