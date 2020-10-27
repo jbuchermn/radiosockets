@@ -133,6 +133,19 @@ class Daemon:
         except:
             return [], "", []
 
+    def cmd_json(self, json):
+        if 'cmd_id' in json:
+            n, s, d = self.cmd(json['cmd_id'])
+            return {
+                'int': n,
+                'char': s,
+                'double': d
+            }
+        elif json['cmd'] == 'report':
+            return self.cmd_report()
+        elif json['cmd'] == 'switch':
+            self.cmd_switch_channel(json['port'], json['new_channel'])
+
     def cmd_report(self):
         n, s, d = self.cmd(CMD_REPORT)
         return [{
