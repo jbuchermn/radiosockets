@@ -239,8 +239,7 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
 
     /* read config */
     const char *ifname;
-    if (config_setting_lookup_string(conf, "ifname", &ifname) !=
-        CONFIG_TRUE) {
+    if (config_setting_lookup_string(conf, "ifname", &ifname) != CONFIG_TRUE) {
         syslog(LOG_ERR, "Need to provide ifname for pcap layer");
         return -1;
     }
@@ -252,8 +251,7 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     }
 
     layer->phy_conf.use_short_gi = 0;
-    config_setting_lookup_bool(conf, "short_gi",
-                       &layer->phy_conf.use_short_gi);
+    config_setting_lookup_bool(conf, "short_gi", &layer->phy_conf.use_short_gi);
 
     /* initialize nl80211 */
     layer->nl_socket = nl_socket_alloc();
@@ -469,7 +467,7 @@ void rs_channel_layer_pcap_destroy(struct rs_channel_layer *super) {
  */
 
 struct rs_channel_layer_pcap_phys_channel
-rs_channel_layer_pcap_phys_channel_unpack(rs_channel_t channel){
+rs_channel_layer_pcap_phys_channel_unpack(rs_channel_t channel) {
     struct rs_channel_layer_pcap_phys_channel res = {
         .band = channel / (12 * 32),
         .mcs = (channel / 12) % 32,
@@ -692,15 +690,16 @@ static int _receive(struct rs_channel_layer *super,
             return RS_CHANNEL_LAYER_IRR;
         }
 
-        if (mcs_known & IEEE80211_RADIOTAP_MCS_HAVE_MCS) {
-            if (mcs !=
-                rs_channel_layer_pcap_phys_channel_unpack(unpacked->channel)
-                    .mcs) {
-                syslog(
-                    LOG_NOTICE,
-                    "Received packet with MCS=%d on channel with MCS=%d", mcs,
-                    rs_channel_layer_pcap_phys_channel_unpack(unpacked->channel)
-                        .mcs);
+        if (mcs_known > 0 &&
+            ((uint8_t)mcs_known & IEEE80211_RADIOTAP_MCS_HAVE_MCS)) {
+            int mcs_c =
+                rs_channel_layer_pcap_phys_channel_unpack(
+                    rs_channel_layer_extract(&layer->super, unpacked->channel))
+                    .mcs;
+            if (mcs != mcs_c) {
+                syslog(LOG_NOTICE,
+                       "Received packet with MCS=%d on channel with MCS=%d",
+                       mcs, mcs_c);
             }
         }
 

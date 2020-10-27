@@ -22,7 +22,7 @@ if __name__ == '__main__':
     d = Daemon("./basic.conf", arg_own, arg_other)
     d.start()
 
-    mod = 2
+    mod = 20
     sleep_s = 0.01
 
     if is_pi:
@@ -54,7 +54,7 @@ if __name__ == '__main__':
 
             if c % int(3 / sleep_s) == 0 and not is_pi:
                 print("Channel Switch")
-                channel += 12
+                channel += 1
                 d.cmd_switch_channel(1, channel)
 
             time.sleep(sleep_s)
