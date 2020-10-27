@@ -421,10 +421,10 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     switch (pcap_datalink(layer->pcap)) {
     case DLT_IEEE802_11_RADIO:
         sprintf(program, "ether src %.12llx && ether dst %.12llx",
-                (unsigned long long)0x112233445500 |
+                (unsigned long long)0x112233440000 |
                     ((layer->super.server->other_id >> 8) << 8) |
                     (layer->super.server->other_id & 0xFF),
-                (unsigned long long)0x112233445500 |
+                (unsigned long long)0x112233440000 |
                     ((layer->super.server->own_id >> 8) << 8) |
                     (layer->super.server->own_id & 0xFF));
         break;

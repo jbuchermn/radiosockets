@@ -267,7 +267,6 @@ void rs_port_layer_main(struct rs_port_layer *layer,
         /* heartbeat */
         if (received->command == RS_PORT_CMD_HEARTBEAT) {
             /* okay */
-            printf("HEARTBEAT: %d\n", received->port);
 
             /* switch channel */
         } else if (received->command == RS_PORT_CMD_SWITCH_CHANNEL) {
