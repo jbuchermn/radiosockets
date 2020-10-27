@@ -117,20 +117,8 @@ int main(int argc, char **argv) {
         config_lookup_string(&state.config, p, &kind);
 
         if (!strcmp(kind, "pcap")) {
-            const char *ifname;
-            sprintf(p, "channels.[%d].pcap.ifname", i);
-            if (config_lookup_string(&state.config, p, &ifname) !=
-                CONFIG_TRUE) {
-                syslog(LOG_ERR, "Need to provide ifname for pcap layer");
-                goto error;
-            }
-
-            int phys;
-            sprintf(p, "channels.[%d].pcap.phys", i);
-            if (config_lookup_int(&state.config, p, &phys) != CONFIG_TRUE) {
-                syslog(LOG_ERR, "Need to provide ifname for pcap layer");
-                goto error;
-            }
+            sprintf(p, "channels.[%d].pcap", i);
+            config_setting_t* conf = config_lookup(&state.config, p);
 
             struct rs_channel_layer_pcap *layer1 =
                 calloc(1, sizeof(struct rs_channel_layer_pcap));
@@ -139,8 +127,7 @@ int main(int argc, char **argv) {
             layers1[n_layers1 - 1] = &layer1->super;
             layers1_alloc[n_layers1 - 1] = layer1;
 
-            if (rs_channel_layer_pcap_init(layer1, &state, base, phys,
-                                           (char *)ifname)) {
+            if (rs_channel_layer_pcap_init(layer1, &state, base, conf)) {
                 syslog(LOG_ERR, "Unable to initalize PCAP layer");
                 goto error;
             }

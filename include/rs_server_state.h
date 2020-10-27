@@ -11,7 +11,7 @@ struct rs_port_layer;
 struct rs_app_layer;
 
 /* "MAC" adress */
-typedef uint8_t rs_server_id_t;
+typedef uint16_t rs_server_id_t;
 
 struct rs_server_state {
     int running;

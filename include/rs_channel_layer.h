@@ -12,8 +12,7 @@
 /*
  * MSB xxxx xxxx xxxx xxxx LSB
  *       |    |   |    |
- *       |    |   +----+-- Different channels (ch_n)
- *       |    +----------- for now fixed at 0x0
+ *       |    +---+----+-- Different channels (ch_n)
  *       +---------------- Different implementations (ch_base - nonzero)
  */
 typedef uint16_t rs_channel_t;

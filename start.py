@@ -22,14 +22,14 @@ if __name__ == '__main__':
     d = Daemon("./basic.conf", arg_own, arg_other)
     d.start()
 
-    mod = 50
-    sleep_s = 0.02
+    mod = 2
+    sleep_s = 0.01
 
     if is_pi:
         mod = 5000
         sleep_s = 0.0002
 
-    print("UDP datarate: %fMbps" % (0.008 / sleep_s))
+    print("UDP datarate: %5.2fMbps" % (0.008 / sleep_s))
 
     try:
         time.sleep(2)
@@ -37,6 +37,8 @@ if __name__ == '__main__':
 
         addr = ('127.0.0.1', 8885) if is_pi else ('127.0.0.1', 8881)
         msg = "a" * 1024
+
+        channel = 0x1000
 
         c = 0
         while True:
@@ -50,9 +52,10 @@ if __name__ == '__main__':
                 for st in stat:
                     print("%10s: %s" % (st['title'], st['stats']))
 
-            if c == int(10 / sleep_s) and not is_pi:
+            if c % int(3 / sleep_s) == 0 and not is_pi:
                 print("Channel Switch")
-                d.cmd_switch_channel(1, 0x1004)
+                channel += 12
+                d.cmd_switch_channel(1, channel)
 
             time.sleep(sleep_s)
     finally:

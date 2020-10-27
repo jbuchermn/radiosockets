@@ -1,6 +1,7 @@
 #ifndef RS_CHANNEL_LAYER_PCAP_H
 #define RS_CHANNEL_LAYER_PCAP_H
 
+#include <libconfig.h>
 #include <linux/if.h>
 #include <pcap/pcap.h>
 
@@ -14,6 +15,21 @@
 struct nl_sock;
 struct nl_cb;
 
+struct rs_channel_layer_pcap_phys_channel {
+    enum {
+        RS_PCAP_CHAN_2_4G_NO_HT,
+        RS_PCAP_CHAN_2_4G_HT20,
+        RS_PCAP_CHAN_2_4G_HT40MINUS,
+        RS_PCAP_CHAN_2_4G_HT40PLUS,
+    } band;
+
+    int channel; /* 2.4 GHz: f = 2.412GHz + 5MHz * channel */
+    int mcs;
+};
+
+struct rs_channel_layer_pcap_phys_channel
+rs_channel_layer_pcap_phys_channel_unpack(rs_channel_t channel);
+
 struct rs_channel_layer_pcap {
     struct rs_channel_layer super;
 
@@ -26,7 +42,11 @@ struct rs_channel_layer_pcap {
     uint32_t nl_if;
     char nl_ifname[IFNAMSIZ];
 
-    uint16_t on_channel; // last two bytes of rs_channel_t
+    struct rs_channel_layer_pcap_phys_channel on_channel;
+
+    struct {
+        int use_short_gi;
+    } phy_conf;
 };
 
 /*
@@ -38,6 +58,6 @@ struct rs_channel_layer_pcap {
  */
 int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
                                struct rs_server_state *server, uint8_t ch_base,
-                               int phys, char *ifname);
+                               config_setting_t *conf);
 
 #endif

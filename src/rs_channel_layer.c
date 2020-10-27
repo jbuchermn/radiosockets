@@ -45,7 +45,7 @@ rs_channel_t rs_channel_layer_ch(struct rs_channel_layer *layer, int i) {
 
 uint16_t rs_channel_layer_extract(struct rs_channel_layer *layer,
                                   rs_channel_t channel) {
-    uint16_t res = (uint16_t)(0x00FF & channel);
+    uint16_t res = (uint16_t)(0x0FFF & channel);
     if (res >= rs_channel_layer_ch_n(layer)) {
         syslog(LOG_ERR, "extract: Encountered invalid channel: %40x / %d",
                channel, res);

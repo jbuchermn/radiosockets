@@ -32,4 +32,33 @@ inline struct timespec rs_timespec_plus_ms(struct timespec* in, double ms){
     return res;
 }
 
+#define TIMER_START(TNAME) \
+    static struct timespec TIMER_ ## TNAME ## _start; \
+    static struct timespec TIMER_ ## TNAME ## _end; \
+    static struct timespec TIMER_ ## TNAME ## _last_print = { 0 }; \
+    static struct timespec TIMER_ ## TNAME ## _print; \
+    static int TIMER_ ## TNAME ## _n_agg = 0; \
+    static long long int TIMER_ ## TNAME ## _nsec_agg = 0; \
+    static int TIMER_ ## TNAME ## _bytes_through_agg = 0; \
+    clock_gettime(CLOCK_REALTIME, &TIMER_ ## TNAME ## _start);
+
+#define TIMER_STOP(TNAME, TBYTES) \
+    clock_gettime(CLOCK_REALTIME, &TIMER_ ## TNAME ## _end); \
+    TIMER_ ## TNAME ## _n_agg++; \
+    TIMER_ ## TNAME ## _bytes_through_agg+=TBYTES; \
+    TIMER_ ## TNAME ## _nsec_agg += TIMER_ ## TNAME ## _end.tv_nsec - TIMER_ ## TNAME ## _start.tv_nsec; \
+    TIMER_ ## TNAME ## _nsec_agg += 1000000000 * (TIMER_ ## TNAME ## _end.tv_sec - TIMER_ ## TNAME ## _start.tv_sec);
+
+#define TIMER_PRINT(TNAME, TFREQ) \
+    clock_gettime(CLOCK_REALTIME, &TIMER_ ## TNAME ## _print); \
+    if(msec_diff(TIMER_ ## TNAME ## _print, TIMER_ ## TNAME ## _last_print) > 1000. / TFREQ){ \
+        syslog(LOG_DEBUG, "TIMER[%s]: %fms, %5.2fMbps\n", #TNAME, \
+                (double)TIMER_ ## TNAME ## _nsec_agg / TIMER_ ## TNAME ## _n_agg / 1000000., \
+                1000000000. * 8 * (double)TIMER_ ## TNAME ## _bytes_through_agg / TIMER_ ## TNAME ## _nsec_agg); \
+        TIMER_ ## TNAME ## _n_agg = 0; \
+        TIMER_ ## TNAME ## _bytes_through_agg = 0; \
+        TIMER_ ## TNAME ## _nsec_agg = 0; \
+        TIMER_ ## TNAME ## _last_print = TIMER_ ## TNAME ## _print; \
+    }
+
 #endif

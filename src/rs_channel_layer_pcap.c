@@ -181,17 +181,42 @@ static int nl_cb_new_interface(struct nl_msg *msg, void *arg) {
 static int nl_cb_default(struct nl_msg *msg, void *arg) { return NL_OK; }
 
 static void nl_set_channel(struct rs_channel_layer_pcap *layer,
-                           int channel /* 0 - 10...12 depending on country */) {
-    if (channel == layer->on_channel)
-        return;
+                           struct rs_channel_layer_pcap_phys_channel channel,
+                           int force) {
+    if (!force) {
+        if (channel.channel == layer->on_channel.channel &&
+            channel.band == layer->on_channel.band)
+            return;
+    }
 
     struct nl_command cmd;
     nl_command_init(&cmd, layer, NL80211_CMD_SET_WIPHY, 0, nl_cb_default);
     nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY, layer->nl_wiphy);
 
-    nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_FREQ, 2412 + 5 * channel);
-    nla_put_u32(cmd.msg, NL80211_ATTR_CHANNEL_WIDTH, NL80211_CHAN_WIDTH_20);
-    nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE, NL80211_CHAN_HT20);
+    nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_FREQ, 2412 + 5 * channel.channel);
+    switch (channel.band) {
+    case RS_PCAP_CHAN_2_4G_NO_HT:
+        nla_put_u32(cmd.msg, NL80211_ATTR_CHANNEL_WIDTH, NL80211_CHAN_WIDTH_20);
+        nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE,
+                    NL80211_CHAN_NO_HT);
+        break;
+    case RS_PCAP_CHAN_2_4G_HT20:
+        nla_put_u32(cmd.msg, NL80211_ATTR_CHANNEL_WIDTH, NL80211_CHAN_WIDTH_20);
+        nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE,
+                    NL80211_CHAN_HT20);
+        break;
+    case RS_PCAP_CHAN_2_4G_HT40MINUS:
+        nla_put_u32(cmd.msg, NL80211_ATTR_CHANNEL_WIDTH, NL80211_CHAN_WIDTH_40);
+        nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE,
+                    NL80211_CHAN_HT40MINUS);
+        break;
+    case RS_PCAP_CHAN_2_4G_HT40PLUS:
+        nla_put_u32(cmd.msg, NL80211_ATTR_CHANNEL_WIDTH, NL80211_CHAN_WIDTH_40);
+        nla_put_u32(cmd.msg, NL80211_ATTR_WIPHY_CHANNEL_TYPE,
+                    NL80211_CHAN_HT40PLUS);
+        break;
+    }
+
     /* nla_put_u32(cmd.msg, NL80211_ATTR_CENTER_FREQ1, 2412 + 5 * channel); */
     /* nla_put_u32(cmd.msg, NL80211_ATTR_CENTER_FREQ2, 2412 + 5 * channel); */
 
@@ -208,9 +233,27 @@ static struct rs_channel_layer_vtable vtable;
 
 int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
                                struct rs_server_state *server, uint8_t ch_base,
-                               int phys, char *ifname) {
+                               config_setting_t *conf) {
     rs_channel_layer_init(&layer->super, server, ch_base, &vtable);
     layer->pcap = NULL;
+
+    /* read config */
+    const char *ifname;
+    if (config_setting_lookup_string(conf, "ifname", &ifname) !=
+        CONFIG_TRUE) {
+        syslog(LOG_ERR, "Need to provide ifname for pcap layer");
+        return -1;
+    }
+
+    int phys;
+    if (config_setting_lookup_int(conf, "phys", &phys) != CONFIG_TRUE) {
+        syslog(LOG_ERR, "Need to provide phys for pcap layer");
+        return -1;
+    }
+
+    layer->phy_conf.use_short_gi = 0;
+    config_setting_lookup_bool(conf, "short_gi",
+                       &layer->phy_conf.use_short_gi);
 
     /* initialize nl80211 */
     layer->nl_socket = nl_socket_alloc();
@@ -371,20 +414,18 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     }
 
     /* set filter */
-    /* assert(sizeof(rs_server_id_t) == 2); */
-    assert(sizeof(rs_server_id_t) == 1);
-    int link_encap = pcap_datalink(layer->pcap);
+    assert(sizeof(rs_server_id_t) == 2);
     struct bpf_program bpfprogram;
     char program[200];
 
-    switch (link_encap) {
+    switch (pcap_datalink(layer->pcap)) {
     case DLT_IEEE802_11_RADIO:
         sprintf(program, "ether src %.12llx && ether dst %.12llx",
                 (unsigned long long)0x112233445500 |
-                    /* ((layer->super.server->other_id >> 8) << 8) | */
+                    ((layer->super.server->other_id >> 8) << 8) |
                     (layer->super.server->other_id & 0xFF),
                 (unsigned long long)0x112233445500 |
-                    /* ((layer->super.server->own_id >> 8) << 8) | */
+                    ((layer->super.server->own_id >> 8) << 8) |
                     (layer->super.server->own_id & 0xFF));
         break;
 
@@ -406,8 +447,9 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     pcap_freecode(&bpfprogram);
 
     /* set initial channel */
-    layer->on_channel = 1; /* Ensure the channel is set */
-    nl_set_channel(layer, 0);
+    struct rs_channel_layer_pcap_phys_channel initial = {
+        .band = RS_PCAP_CHAN_2_4G_NO_HT, .channel = 0, .mcs = 0};
+    nl_set_channel(layer, initial, 1);
 
     return 0;
 }
@@ -425,71 +467,49 @@ void rs_channel_layer_pcap_destroy(struct rs_channel_layer *super) {
  ************************************************************************
  * tx/rx code
  */
-static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
-    0x00, // it_version
-    0x00, // it_pad
 
-    0x11,
-    0x00, // it_len
+struct rs_channel_layer_pcap_phys_channel
+rs_channel_layer_pcap_phys_channel_unpack(rs_channel_t channel){
+    struct rs_channel_layer_pcap_phys_channel res = {
+        .band = channel / (12 * 32),
+        .mcs = (channel / 12) % 32,
+        .channel = channel % 12,
+    };
+
+    return res;
+}
+
+// clang-format off
+// simply doe not like these headers...
+static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
+    0x00, 0x00, // it_version, it_pad
+    0x0D, 0x00, // it_len
 
     // it_present
-    // bits 7-0, 15-8, 23-16, 31-24
-    // set CHANNEL: bit 3
-    // set TX_FLAGS: bit 15
-    // set MCS: bit 19
-    0x08, 0x80, 0x08, 0x00,
+    // set TX_FLAGS
+    // set MCS
+    0x00, 0x80, 0x08, 0x00,
 
-    // CHANNEL
-    // u16 frequency (MHz), u16 flags
-    // frequency: to be set
-    // flags 7-0, 15-8
-    // set Dynamic CCK-OFDM channel: bit 10
-    // set 2GHz channel: bit 7
-    0x00, 0x00, 0x80, 0x04,
-
-    // TX_FLAGS
-    // u16 flags 7-0, 15-8
-    // set NO_ACK: bit 3
+    // TX_FLAGS: u16
+    // set NO_ACK
     0x08, 0x00,
 
-    // MCS
-    // u8 known, u8 flags, u8 mcs
-    // known: Guard Interval, Bandwidth, MCS, STBC, FEC
-    // flags: _xx1_gbb, xx: STBC, g: GI, bb: bandwidth
-    (IEEE80211_RADIOTAP_MCS_HAVE_MCS | IEEE80211_RADIOTAP_MCS_HAVE_BW |
-     IEEE80211_RADIOTAP_MCS_HAVE_GI | IEEE80211_RADIOTAP_MCS_HAVE_STBC |
-     IEEE80211_RADIOTAP_MCS_HAVE_FEC),
-    0x10, 0x00};
+    // MCS: u8 known, u8 flags, u8 mcs
+    0x00, 0x00, 0x00
+};
 
 static uint8_t ieee80211_header[] __attribute__((unused)) = {
-    // IEEE802.11 header
-    0x08,
-    0x01,
-    0x00,
-    0x00,
-    0xFF,
-    0xFF,
-    0xFF,
-    0xFF,
-    0xFF,
-    0xFF,
+    0x08, 0x01, 0x00, 0x00,
+    0xFF, 0xFF, 0xFF, 0xFF,
+    0xFF, 0xFF,
     // src mac
-    0x11,
-    0x22,
-    0x33,
-    0x44,
-    0x55,
-    0x66,
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
     // dst mac
-    0x11,
-    0x22,
-    0x33,
-    0x44,
-    0x55,
-    0x66,
-    0x00,
-    0x00,
+    0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+    //
+    0x00, 0x00,
 };
+// clang-format on
 
 static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
                      rs_channel_t channel) {
@@ -499,49 +519,77 @@ static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
         syslog(LOG_ERR, "Attempting to send packet through wrong channel");
         return -1;
     }
-    int chan = rs_channel_layer_extract(&layer->super, channel);
-    nl_set_channel(layer, chan%10);
+    struct rs_channel_layer_pcap_phys_channel chan =
+        rs_channel_layer_pcap_phys_channel_unpack(
+            rs_channel_layer_extract(&layer->super, channel));
+    nl_set_channel(layer, chan, 0);
 
     uint8_t tx_buf[RS_PCAP_TX_BUFSIZE];
     uint8_t *tx_ptr = tx_buf;
     int tx_len = RS_PCAP_TX_BUFSIZE;
 
+    /* Radiotap header */
     memcpy(tx_ptr, tx_radiotap_header, sizeof(tx_radiotap_header));
-
-    // Set frequency (not clear if necessary)
-    uint16_t freq = 2412 + 5 * layer->on_channel;
-    tx_ptr[8] = (uint8_t)freq;
-    tx_ptr[9] = (uint8_t)(freq >> 8);
 
     // Set MCS
     // https://en.wikipedia.org/wiki/IEEE_802.11n-2009#Data_rates
-    tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_BW_20;
-    /* tx_ptr[15] |= IEEE80211_RADIOTAP_MCS_SGI; */
-    tx_ptr[16] = chan/10;
+    // iw dev $WLAN set bitrates ht-mcs-5 1 sgi-5
+
+    // known
+    tx_ptr[10] =
+        (IEEE80211_RADIOTAP_MCS_HAVE_MCS | IEEE80211_RADIOTAP_MCS_HAVE_BW |
+         IEEE80211_RADIOTAP_MCS_HAVE_GI | IEEE80211_RADIOTAP_MCS_HAVE_STBC |
+         IEEE80211_RADIOTAP_MCS_HAVE_FEC);
+
+    // flags
+    tx_ptr[11] |= IEEE80211_RADIOTAP_MCS_FEC_LDPC;
+
+    switch (chan.band) {
+    case RS_PCAP_CHAN_2_4G_NO_HT:
+    case RS_PCAP_CHAN_2_4G_HT20:
+        tx_ptr[11] |= IEEE80211_RADIOTAP_MCS_BW_20;
+        break;
+    case RS_PCAP_CHAN_2_4G_HT40MINUS:
+    case RS_PCAP_CHAN_2_4G_HT40PLUS:
+        tx_ptr[11] |= IEEE80211_RADIOTAP_MCS_BW_40;
+        break;
+    }
+
+    if (layer->phy_conf.use_short_gi) {
+        tx_ptr[11] |= IEEE80211_RADIOTAP_MCS_SGI;
+    }
+
+    // mcs
+    tx_ptr[12] = chan.mcs;
 
     tx_ptr += sizeof(tx_radiotap_header);
     tx_len -= sizeof(tx_radiotap_header);
 
+    /* IEEE802.11 header */
     memcpy(tx_ptr, ieee80211_header, sizeof(ieee80211_header));
 
-    /* assert(sizeof(rs_server_id_t) == 2); */
-    assert(sizeof(rs_server_id_t) == 1);
     // src mac
-    /* tx_ptr[14] = layer->super.server->own_id >> 8; */
-    tx_ptr[15] = layer->super.server->own_id & 0xFF;
+    for (int i = 0; i < sizeof(rs_server_id_t); i++) {
+        tx_ptr[15 - i] = (uint8_t)(layer->super.server->own_id >> (8 * i));
+    }
     // dst mac
-    /* tx_ptr[20] = layer->super.server->other_id >> 8; */
-    tx_ptr[21] = layer->super.server->other_id & 0xFF;
+    for (int i = 0; i < sizeof(rs_server_id_t); i++) {
+        tx_ptr[21 - i] = (uint8_t)(layer->super.server->other_id >> (8 * i));
+    }
 
     tx_ptr += sizeof(ieee80211_header);
     tx_len -= sizeof(ieee80211_header);
 
+    /* Payload */
     uint8_t *tx_begin_payload = tx_ptr;
     rs_packet_pack(packet, &tx_ptr, &tx_len);
 
+    TIMER_START(pcap_inject);
     if (pcap_inject(layer->pcap, tx_buf, tx_ptr - tx_buf) != tx_ptr - tx_buf) {
         return -1;
     }
+    TIMER_STOP(pcap_inject, tx_ptr - tx_buf);
+    TIMER_PRINT(pcap_inject, 2);
 
     return tx_ptr - tx_begin_payload;
 }
@@ -555,8 +603,10 @@ static int _receive(struct rs_channel_layer *super,
         return -1;
     }
     if (channel) {
-        int chan = rs_channel_layer_extract(&layer->super, channel);
-        nl_set_channel(layer, chan%10);
+        struct rs_channel_layer_pcap_phys_channel chan =
+            rs_channel_layer_pcap_phys_channel_unpack(
+                rs_channel_layer_extract(&layer->super, channel));
+        nl_set_channel(layer, chan, 0);
     }
 
     struct pcap_pkthdr header;
@@ -569,9 +619,9 @@ static int _receive(struct rs_channel_layer *super,
             header.caplen, NULL);
 
         int flags = -1;
-        /* int mcs_known = -1; */
-        /* int mcs_flags = -1; */
-        /* int mcs = -1; */
+        int mcs_known = -1;
+        int mcs_flags = -1;
+        int mcs = -1;
         /* int rate = -1; */
         /* int chan = -1; */
         /* int chan_flags = -1; */
@@ -585,14 +635,14 @@ static int _receive(struct rs_channel_layer *super,
             case IEEE80211_RADIOTAP_FLAGS:
                 flags = *(uint8_t *)(it.this_arg);
                 break;
-            /* case IEEE80211_RADIOTAP_MCS: */
-            /*     mcs_known = *(uint8_t *)(it.this_arg); */
-            /*     mcs_flags = *(((uint8_t *)(it.this_arg)) + 1); */
-            /*     mcs = *(((uint8_t *)(it.this_arg)) + 2); */
-            /*     break; */
-            /* case IEEE80211_RADIOTAP_RATE: */
-            /*     rate = *(uint8_t *)(it.this_arg); */
-            /*     break; */
+            case IEEE80211_RADIOTAP_MCS:
+                mcs_known = *(uint8_t *)(it.this_arg);
+                mcs_flags = *(((uint8_t *)(it.this_arg)) + 1);
+                mcs = *(((uint8_t *)(it.this_arg)) + 2);
+                break;
+                /* case IEEE80211_RADIOTAP_RATE: */
+                /*     rate = *(uint8_t *)(it.this_arg); */
+                /*     break; */
                 /* case IEEE80211_RADIOTAP_CHANNEL: */
                 /*     chan = get_unaligned((uint16_t *)(it.this_arg)); */
                 /*     chan_flags = get_unaligned(((uint16_t *)(it.this_arg)) +
@@ -607,7 +657,7 @@ static int _receive(struct rs_channel_layer *super,
         }
 
         /* syslog(LOG_DEBUG, "rate: %d known %02x flags %02x mcs %d", rate, */
-               /* mcs_known, mcs_flags, mcs); */
+        /* mcs_known, mcs_flags, mcs); */
         if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) {
             syslog(LOG_DEBUG, "Received bad FCS packet");
             return RS_CHANNEL_LAYER_BADFCS;
@@ -642,6 +692,18 @@ static int _receive(struct rs_channel_layer *super,
             return RS_CHANNEL_LAYER_IRR;
         }
 
+        if (mcs_known & IEEE80211_RADIOTAP_MCS_HAVE_MCS) {
+            if (mcs !=
+                rs_channel_layer_pcap_phys_channel_unpack(unpacked->channel)
+                    .mcs) {
+                syslog(
+                    LOG_NOTICE,
+                    "Received packet with MCS=%d on channel with MCS=%d", mcs,
+                    rs_channel_layer_pcap_phys_channel_unpack(unpacked->channel)
+                        .mcs);
+            }
+        }
+
         (*packet) = unpacked;
 
         return 0;
@@ -651,8 +713,7 @@ static int _receive(struct rs_channel_layer *super,
 }
 
 int rs_channel_layer_pcap_ch_n(struct rs_channel_layer *super) {
-    /* MCS = 0..7, for each channel 0-9 */
-    return 70; 
+    return 12 * 32 * 4;
 }
 
 static struct rs_channel_layer_vtable vtable = {
