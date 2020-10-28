@@ -8,6 +8,7 @@
 #include <syslog.h>
 #include <unistd.h>
 
+#include "rs_util.h"
 #include "rs_app_layer.h"
 #include "rs_channel_layer_pcap.h"
 #include "rs_command_loop.h"
@@ -15,7 +16,7 @@
 #include "rs_port_layer.h"
 #include "rs_server_state.h"
 
-#define MAIN_LOOP_NS 10 /*us*/ * 1000L
+#define MAIN_LOOP_NS 200 /*us*/ * 1000L
 /* #define MAIN_PRINT_STATS */
 /* #define MAIN_PRINT_STATS_N 1000 */
 
@@ -160,6 +161,7 @@ int main(int argc, char **argv) {
     /* main loop */
     signal(SIGINT, signal_handler);
     while (state.running) {
+        TIMER_START(main);
         /* Do stuff */
         rs_command_loop_run(&command_loop, &state);
 
@@ -186,6 +188,8 @@ int main(int argc, char **argv) {
         }
 #endif
 
+        TIMER_STOP(main, 0);
+        TIMER_PRINT(main, 2);
         /* Loop limit */
         struct timespec loop;
         clock_gettime(CLOCK_REALTIME, &loop);

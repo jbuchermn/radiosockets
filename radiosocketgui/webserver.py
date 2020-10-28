@@ -68,7 +68,7 @@ class Webserver(Thread):
 
     def stop(self):
         self._running = False
-        os.system("wget localhost:%d" % PORT)
+        os.system("wget -O - localhost:%d > /dev/null" % PORT)
 
 
 if __name__ == '__main__':

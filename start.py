@@ -13,7 +13,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == "fake-pi":
         is_pi = True
 
-    sleep_s = 0.01
+    sleep_s = 0.001
     if is_pi:
         arg_own = "0xDD"
         arg_other = "0xAA"
@@ -29,14 +29,14 @@ if __name__ == '__main__':
     server = None
     if len(sys.argv) > 1 and sys.argv[1] == "gui":
         server = Webserver(daemon)
-        server.run()
+        server.start()
 
     try:
         time.sleep(2)
         data_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         data_addr = ('127.0.0.1', 8885) if is_pi else ('127.0.0.1', 8881)
-        data_msg = "a" * 1024
+        data_msg = "a" * 1000
 
         cnt = 0
         while True:
@@ -44,6 +44,7 @@ if __name__ == '__main__':
 
             cnt += 1
             if cnt % int(1 / sleep_s) == 0:
+                b = 0
                 print("-----------------------------------")
                 stat = daemon.cmd_report()
                 for st in stat:
