@@ -18,39 +18,17 @@ void rs_channel_layer_packet_pack_header(struct rs_packet *super,
         rs_cast(rs_channel_layer_packet, super);
 
     /* channel */
-    if (*buffer_len < sizeof(rs_channel_t))
-        return;
-    for (int i = sizeof(rs_channel_t) - 1; i >= 0; i--) {
-        (**buffer) = (uint8_t)(packet->channel >> (8 * i));
-        (*buffer)++;
-        (*buffer_len)--;
-    }
+    PACK(buffer, buffer_len, rs_channel_t, packet->channel);
+    PACK(buffer, buffer_len, rs_channel_layer_seq_t, packet->seq);
+    PACK(buffer, buffer_len, uint16_t, packet->ts);
 
-    /* seq */
-    if (*buffer_len < sizeof(rs_channel_layer_seq_t))
-        return;
-    for (int i = sizeof(rs_channel_layer_seq_t) - 1; i >= 0; i--) {
-        (**buffer) = (uint8_t)(packet->seq >> (8 * i));
-        (*buffer)++;
-        (*buffer_len)--;
-    }
-
-    /* ts */
-    if(*buffer_len < sizeof(uint16_t)) return;
-    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
-        (**buffer) = (uint8_t)(packet->ts >> (8 * i));
-        (*buffer)++;
-        (*buffer_len)--;
-    }
-
-    if(rs_stats_packed_pack(&packet->stats, buffer, buffer_len)) return;
+    if (rs_stats_packed_pack(&packet->stats, buffer, buffer_len))
+        goto pack_err;
 
     /* command */
-    if (*buffer_len < 1)
-        return;
-    (**buffer) = packet->command;
-    (*buffer)++;
-    (*buffer_len)--;
+    PACK(buffer, buffer_len, uint8_t, packet->command);
+
+pack_err:;
 }
 
 void rs_channel_layer_packet_init(struct rs_channel_layer_packet *packet,
@@ -70,50 +48,24 @@ int rs_channel_layer_packet_unpack(struct rs_channel_layer_packet *packet,
     rs_channel_layer_packet_init(packet, payload_ownership, NULL, payload_data,
                                  payload_data_len);
 
-    /* channel */
-    if (payload_data_len < sizeof(rs_channel_t))
-        return -1;
-    packet->channel = 0;
-    for (int i = sizeof(rs_channel_t) - 1; i >= 0; i--) {
-        packet->channel += ((rs_channel_t)(*packet->super.payload_data))
-                           << (8 * i);
-        packet->super.payload_data++;
-        packet->super.payload_data_len--;
-    }
+    UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
+           rs_channel_t, &packet->channel);
+    UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
+           rs_channel_layer_seq_t, &packet->seq);
+    UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
+           uint16_t, &packet->ts);
 
-    /* seq */
-    if (payload_data_len < sizeof(rs_channel_layer_seq_t))
-        return -1;
-    packet->seq = 0;
-    for (int i = sizeof(rs_channel_layer_seq_t) - 1; i >= 0; i--) {
-        packet->seq += ((rs_channel_layer_seq_t)(*packet->super.payload_data))
-                       << (8 * i);
-        packet->super.payload_data++;
-        packet->super.payload_data_len--;
-    }
+    if (rs_stats_packed_unpack(&packet->stats, &packet->super.payload_data,
+                               &packet->super.payload_data_len))
+        goto unpack_err;
 
-    /* ts */
-    if (packet->super.payload_data_len < sizeof(uint16_t))
-        return -1;
-    packet->ts = 0;
-    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
-        packet->ts += ((uint16_t)(*packet->super.payload_data))
-                       << (8 * i);
-        packet->super.payload_data++;
-        packet->super.payload_data_len--;
-    }
-
-    if(rs_stats_packed_unpack(&packet->stats, &packet->super.payload_data,
-                           &packet->super.payload_data_len)) return -1;
-
-    /* command */
-    if (payload_data_len < 1)
-        return -1;
-    packet->command = (*packet->super.payload_data);
-    packet->super.payload_data++;
-    packet->super.payload_data_len--;
+    UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
+           uint8_t, &packet->command);
 
     return 0;
+
+unpack_err:
+    return -1;
 }
 
 static struct rs_packet_vtable vtable = {

@@ -412,19 +412,22 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     }
 
     /* set filter */
-    assert(sizeof(rs_server_id_t) == 2);
     struct bpf_program bpfprogram;
     char program[200];
 
+    unsigned long long src_mac = 0x112233445566;
+    unsigned long long dst_mac = 0x112233445566;
+    for (int i = 0; i < sizeof(rs_server_id_t); i++) {
+        ((uint8_t *)(&src_mac))[5 - i] =
+            (uint8_t)(layer->super.server->own_id >> (8 * i));
+        ((uint8_t *)(&dst_mac))[5 - i] =
+            (uint8_t)(layer->super.server->other_id >> (8 * i));
+    }
+
     switch (pcap_datalink(layer->pcap)) {
     case DLT_IEEE802_11_RADIO:
-        sprintf(program, "ether src %.12llx && ether dst %.12llx",
-                (unsigned long long)0x112233440000 |
-                    ((layer->super.server->other_id >> 8) << 8) |
-                    (layer->super.server->other_id & 0xFF),
-                (unsigned long long)0x112233440000 |
-                    ((layer->super.server->own_id >> 8) << 8) |
-                    (layer->super.server->own_id & 0xFF));
+        sprintf(program, "ether src %.12llx && ether dst %.12llx", src_mac,
+                dst_mac);
         break;
 
     default:
@@ -435,11 +438,13 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     if (pcap_compile(layer->pcap, &bpfprogram, program, 1, 0) == -1) {
         syslog(LOG_ERR, "Unable to compile %s: %s", program,
                pcap_geterr(layer->pcap));
+        return -1;
     }
 
     if (pcap_setfilter(layer->pcap, &bpfprogram) == -1) {
         syslog(LOG_ERR, "Unable to set filter %s: %s", program,
                pcap_geterr(layer->pcap));
+        return -1;
     }
 
     pcap_freecode(&bpfprogram);
@@ -464,6 +469,10 @@ void rs_channel_layer_pcap_destroy(struct rs_channel_layer *super) {
 /*
  ************************************************************************
  * tx/rx code
+ *
+ * Some sources:
+ * - https://www.kernel.org/doc/Documentation/networking/mac80211-injection.txt
+ * - https://en.wikipedia.org/wiki/IEEE_802.11n-2009#Data_rates
  */
 
 struct rs_channel_layer_pcap_phys_channel
@@ -498,14 +507,13 @@ static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
 
 static uint8_t ieee80211_header[] __attribute__((unused)) = {
     0x08, 0x01, 0x00, 0x00,
-    0xFF, 0xFF, 0xFF, 0xFF,
-    0xFF, 0xFF,
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     // src mac
     0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
     // dst mac
     0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
     //
-    0x00, 0x00,
+    0x10, 0x86,
 };
 // clang-format on
 
@@ -529,18 +537,10 @@ static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
     /* Radiotap header */
     memcpy(tx_ptr, tx_radiotap_header, sizeof(tx_radiotap_header));
 
-    // Set MCS
-    // https://en.wikipedia.org/wiki/IEEE_802.11n-2009#Data_rates
-    // iw dev $WLAN set bitrates ht-mcs-5 1 sgi-5
-
-    // known
+    // Set MCS: knwon / flags / mcs
     tx_ptr[10] =
         (IEEE80211_RADIOTAP_MCS_HAVE_MCS | IEEE80211_RADIOTAP_MCS_HAVE_BW |
-         IEEE80211_RADIOTAP_MCS_HAVE_GI | IEEE80211_RADIOTAP_MCS_HAVE_STBC |
-         IEEE80211_RADIOTAP_MCS_HAVE_FEC);
-
-    // flags
-    tx_ptr[11] |= IEEE80211_RADIOTAP_MCS_FEC_LDPC;
+         IEEE80211_RADIOTAP_MCS_HAVE_GI);
 
     switch (chan.band) {
     case RS_PCAP_CHAN_2_4G_NO_HT:
@@ -556,8 +556,6 @@ static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
     if (layer->phy_conf.use_short_gi) {
         tx_ptr[11] |= IEEE80211_RADIOTAP_MCS_SGI;
     }
-
-    // mcs
     tx_ptr[12] = chan.mcs;
 
     tx_ptr += sizeof(tx_radiotap_header);
@@ -620,10 +618,10 @@ static int _receive(struct rs_channel_layer *super,
         int mcs_known = -1;
         int mcs_flags = -1;
         int mcs = -1;
-        /* int rate = -1; */
-        /* int chan = -1; */
-        /* int chan_flags = -1; */
-        /* int antenna = -1; */
+        int rate = -1;
+        int chan = -1;
+        int chan_flags = -1;
+        int antenna = -1;
 
         while (status == 0) {
             if ((status = ieee80211_radiotap_iterator_next(&it)))
@@ -638,24 +636,26 @@ static int _receive(struct rs_channel_layer *super,
                 mcs_flags = *(((uint8_t *)(it.this_arg)) + 1);
                 mcs = *(((uint8_t *)(it.this_arg)) + 2);
                 break;
-                /* case IEEE80211_RADIOTAP_RATE: */
-                /*     rate = *(uint8_t *)(it.this_arg); */
-                /*     break; */
-                /* case IEEE80211_RADIOTAP_CHANNEL: */
-                /*     chan = get_unaligned((uint16_t *)(it.this_arg)); */
-                /*     chan_flags = get_unaligned(((uint16_t *)(it.this_arg)) +
-                 * 1); */
-                /*     break; */
-                /* case IEEE80211_RADIOTAP_ANTENNA: */
-                /*     antenna = *(uint8_t *)(it.this_arg); */
-                /*     break; */
-                /* default: */
-                /*     break; */
+            case IEEE80211_RADIOTAP_RATE:
+                rate = *(uint8_t *)(it.this_arg);
+                break;
+            case IEEE80211_RADIOTAP_CHANNEL:
+                chan = get_unaligned((uint16_t *)(it.this_arg));
+                chan_flags = get_unaligned(((uint16_t *)(it.this_arg)) + 1);
+                break;
+            case IEEE80211_RADIOTAP_ANTENNA:
+                antenna = *(uint8_t *)(it.this_arg);
+                break;
+            default:
+                break;
             }
         }
 
-        /* syslog(LOG_DEBUG, "rate: %d known %02x flags %02x mcs %d", rate, */
-        /* mcs_known, mcs_flags, mcs); */
+        syslog(LOG_DEBUG,
+               "rate: %d MCS: known %02x flags %02x mcs %d Channel: %d flags "
+               "%04x Antenna: %d",
+               rate, mcs_known, mcs_flags, mcs, chan, chan_flags, antenna);
+
         if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) {
             syslog(LOG_DEBUG, "Received bad FCS packet");
             return RS_CHANNEL_LAYER_BADFCS;

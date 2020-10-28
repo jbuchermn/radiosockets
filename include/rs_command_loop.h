@@ -1,5 +1,5 @@
-#ifndef COMMAND_LOOP_H
-#define COMMAND_LOOP_H
+#ifndef RS_COMMAND_LOOP_H
+#define RS_COMMAND_LOOP_H
 
 #include <stdint.h>
 
@@ -8,41 +8,13 @@ struct rs_port_layer;
 
 struct rs_command_loop {
     int socket_fd;
-
-    uint8_t *buffer;
 };
+
 
 void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file);
 void rs_command_loop_run(struct rs_command_loop *loop,
                          struct rs_server_state *state);
 void rs_command_loop_destroy(struct rs_command_loop *loop);
 
-
-#define RS_COMMAND_LOOP_PAYLOAD_MAX 100
-
-#define RS_COMMAND_LOOP_CMD_REPORT 1
-#define RS_COMMAND_LOOP_CMD_SWITCH_CHANNEL 2
-#define RS_COMMAND_LOOP_CMD_EXIT 13
-
-#pragma pack(1)
-
-struct rs_command_payload {
-    uint32_t id;
-    uint32_t command;
-
-    int payload_int[RS_COMMAND_LOOP_PAYLOAD_MAX];
-    char payload_char[RS_COMMAND_LOOP_PAYLOAD_MAX];
-    double payload_double[RS_COMMAND_LOOP_PAYLOAD_MAX];
-};
-
-struct rs_command_response_payload {
-    uint32_t id;
-
-    int payload_int[RS_COMMAND_LOOP_PAYLOAD_MAX];
-    char payload_char[RS_COMMAND_LOOP_PAYLOAD_MAX];
-    double payload_double[RS_COMMAND_LOOP_PAYLOAD_MAX];
-};
-
-#pragma pack()
 
 #endif

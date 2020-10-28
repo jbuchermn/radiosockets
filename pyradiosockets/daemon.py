@@ -5,59 +5,15 @@ import signal
 from subprocess import Popen, PIPE
 
 from .pcap_conf import pcap_conf_compile
+from .rs_message import (
+    rs_message_recv, rs_message_send, Message,
+    RS_MESSAGE_CMD_EXIT, RS_MESSAGE_CMD_REPORT, RS_MESSAGE_CMD_SWITCH_CHANNEL)
 
+CMD_REPORT_N = 11
 
 def cmd(cmd):
     p = Popen(cmd.split(), stdout=PIPE)
     return p.communicate()[0].decode()
-
-
-CMD_PAYLOAD_MAX = 100
-
-CMD_REPORT = 1
-CMD_REPORT_N = 11
-CMD_SWITCH_CHANNEL = 2
-CMD_EXIT = 13
-
-
-class CommandPayload(ctypes.Structure):
-    _pack_ = 1
-    _fields_ = [("id", ctypes.c_uint32),
-                ("command", ctypes.c_uint32),
-                ("payload_int", ctypes.ARRAY(ctypes.c_int, CMD_PAYLOAD_MAX)),
-                ("payload_char", ctypes.ARRAY(ctypes.c_char, CMD_PAYLOAD_MAX)),
-                ("payload_double", ctypes.ARRAY(ctypes.c_double, CMD_PAYLOAD_MAX))]
-
-    def __init__(self, command, payload_int, payload_char, payload_double):
-        self.id = 0
-        self.command = command
-
-        while len(payload_int) < CMD_PAYLOAD_MAX:
-            payload_int += [0]
-        self.payload_int = (ctypes.c_int * 100)(*payload_int)
-
-        self.payload_char = payload_char.encode("ascii")
-
-        while len(payload_double) < CMD_PAYLOAD_MAX:
-            payload_double += [0.0]
-        self.payload_double = (ctypes.c_double * 100)(*payload_double)
-
-
-class ResponsePayload(ctypes.Structure):
-    _pack_ = 1
-    _fields_ = [("id", ctypes.c_uint32),
-                ("payload_int", ctypes.ARRAY(ctypes.c_int, CMD_PAYLOAD_MAX)),
-                ("payload_char", ctypes.ARRAY(ctypes.c_char, CMD_PAYLOAD_MAX)),
-                ("payload_double", ctypes.ARRAY(ctypes.c_double, CMD_PAYLOAD_MAX))]
-
-    def get_payload_int(self):
-        return [self.payload_int[i] for i in range(CMD_PAYLOAD_MAX)]
-
-    def get_payload_char(self):
-        return self.payload_char.decode("ascii")
-
-    def get_payload_double(self):
-        return [self.payload_double[i] for i in range(CMD_PAYLOAD_MAX)]
 
 
 class Daemon:
@@ -70,7 +26,7 @@ class Daemon:
         self.conf = "/tmp/radiosocketd_%d.conf" % os.getpid()
 
         self.daemon = None
-        self.cmd_id = 0
+        self._cmd_id = 0
 
     def start(self):
         args = pcap_conf_compile()
@@ -104,58 +60,58 @@ class Daemon:
         self.cmd_close()
         self.daemon.communicate()
 
-    def cmd(self, cmd_id, payload_int=[], payload_char="", payload_double=[]):
-        self.cmd_id += 1
-
-        command = CommandPayload(
-            cmd_id, payload_int, payload_char, payload_double)
-        command.id = self.cmd_id
+    def _cmd(self, cmd, payload_int=[], payload_char="", payload_double=[]):
+        self._cmd_id += 1
+        msg = Message(self._cmd_id, cmd, payload_int,
+                      payload_char, payload_double)
 
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        resp = None
         try:
             s.connect(self.socket)
-            s.send(command)
-            buff = s.recv(ctypes.sizeof(ResponsePayload))
-            response = ResponsePayload.from_buffer_copy(buff)
 
-            if response.id != command.id:
+            rs_message_send(s, msg)
+            answer = rs_message_recv(s)
+
+            if msg.id != answer.id:
                 print("ERROR: Id mismatch")
             else:
-                resp = response
+                return answer
         except Exception as e:
             print("ERROR: %s" % e)
         finally:
             s.close()
 
-        try:
-            return resp.get_payload_int(), resp.get_payload_char(), resp.get_payload_double()
-        except:
-            return [], "", []
+        return None
 
     def cmd_json(self, json):
         if 'cmd_id' in json:
-            n, s, d = self.cmd(json['cmd_id'])
+            msg = self._cmd(json['cmd_id'])
             return {
-                'int': n,
-                'char': s,
-                'double': d
+                'int': msg.payload_int,
+                'char': msg.payload_char,
+                'double': msg.payload_double
             }
         elif json['cmd'] == 'report':
             return self.cmd_report()
         elif json['cmd'] == 'switch':
-            self.cmd_switch_channel(json['port'], json['new_channel'])
+            return self.cmd_switch_channel(json['port'], json['new_channel'])
 
     def cmd_report(self):
-        n, s, d = self.cmd(CMD_REPORT)
+        msg = self._cmd(RS_MESSAGE_CMD_REPORT)
+        if msg is None:
+            return []
+
+        n = msg.payload_int
+        s = msg.payload_char
+        d = msg.payload_double
         return [{
             'title': '%s%i' % (s[i], n[i]),
             'stats': d[CMD_REPORT_N*i:CMD_REPORT_N*(i+1)]
         } for i, _ in enumerate(s)]
 
     def cmd_switch_channel(self, port, new_channel):
-        n, _, _ = self.cmd(CMD_SWITCH_CHANNEL, [port, new_channel])
-        return n[0]
+        msg = self._cmd(RS_MESSAGE_CMD_SWITCH_CHANNEL, [port, new_channel])
+        return msg.cmd if msg is not None else -1
 
     def cmd_close(self):
-        self.cmd(CMD_EXIT)
+        self._cmd(RS_MESSAGE_CMD_EXIT)

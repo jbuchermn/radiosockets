@@ -251,41 +251,28 @@ void rs_stats_packed_init(struct rs_stats_packed *packed,
 
 int rs_stats_packed_pack(struct rs_stats_packed *packed, uint8_t **buffer,
                          int *buffer_len) {
-    if (*buffer_len < 8)
-        return -1;
-
-    *(*buffer) = (uint8_t)(packed->rx_bits >> 8);
-    *(*buffer + 1) = (uint8_t)(packed->rx_bits);
-    *(*buffer + 2) = (uint8_t)(packed->rx_packets >> 8);
-    *(*buffer + 3) = (uint8_t)(packed->rx_packets);
-    *(*buffer + 4) = (uint8_t)(packed->rx_missed >> 8);
-    *(*buffer + 5) = (uint8_t)(packed->rx_missed);
-    *(*buffer + 6) = (uint8_t)(packed->rx_dt >> 8);
-    *(*buffer + 7) = (uint8_t)(packed->rx_dt);
-
-    *buffer += 8;
-    *buffer_len -= 8;
+    PACK(buffer, buffer_len, uint16_t, packed->rx_bits);
+    PACK(buffer, buffer_len, uint16_t, packed->rx_packets);
+    PACK(buffer, buffer_len, uint16_t, packed->rx_missed);
+    PACK(buffer, buffer_len, uint16_t, packed->rx_dt);
 
     return 0;
+
+pack_err:
+    return -1;
 }
 
 int rs_stats_packed_unpack(struct rs_stats_packed *unpacked, uint8_t **buffer,
                            int *buffer_len) {
-    if (*buffer_len < 8)
-        return -1;
-    unpacked->rx_bits =
-        (((uint16_t)(*(*buffer))) << 8) + (uint16_t)(*(*buffer + 1));
-    unpacked->rx_packets =
-        (((uint16_t)(*(*buffer + 2))) << 8) + (uint16_t)(*(*buffer + 3));
-    unpacked->rx_missed =
-        (((uint16_t)(*(*buffer + 4))) << 8) + (uint16_t)(*(*buffer + 5));
-    unpacked->rx_dt =
-        (((uint16_t)(*(*buffer + 6))) << 8) + (uint16_t)(*(*buffer + 7));
-
-    *buffer_len -= 8;
-    *buffer += 8;
+    UNPACK(buffer, buffer_len, uint16_t, &unpacked->rx_bits);
+    UNPACK(buffer, buffer_len, uint16_t, &unpacked->rx_packets);
+    UNPACK(buffer, buffer_len, uint16_t, &unpacked->rx_missed);
+    UNPACK(buffer, buffer_len, uint16_t, &unpacked->rx_dt);
 
     return 0;
+
+unpack_err:
+    return -1;
 }
 
 void rs_stats_place(struct rs_stats *stats, double *into) {

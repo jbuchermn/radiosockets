@@ -26,7 +26,7 @@ if __name__ == '__main__':
 
     print("UDP datarate: %5.2fMbps" % (0.008 / sleep_s))
 
-    webserver = None
+    server = None
     if len(sys.argv) > 1 and sys.argv[1] == "gui":
         server = Webserver(daemon)
         server.run()

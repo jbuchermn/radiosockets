@@ -17,51 +17,21 @@ void rs_port_layer_packet_pack_header(struct rs_packet *super, uint8_t **buffer,
     struct rs_port_layer_packet *packet = rs_cast(rs_port_layer_packet, super);
 
     /* command */
-    if (*buffer_len < 1)
-        return;
-    (**buffer) = packet->command;
-    (*buffer)++;
-    (*buffer_len)--;
-
-    /* port */
-    if (*buffer_len < sizeof(rs_port_id_t))
-        return;
-    for (int i = sizeof(rs_port_id_t) - 1; i >= 0; i--) {
-        (**buffer) = (uint8_t)(packet->port >> (8 * i));
-        (*buffer)++;
-        (*buffer_len)--;
-    }
-
-    /* seq */
-    if (*buffer_len < sizeof(rs_port_layer_seq_t))
-        return;
-    for (int i = sizeof(rs_port_layer_seq_t) - 1; i >= 0; i--) {
-        (**buffer) = (uint8_t)(packet->seq >> (8 * i));
-        (*buffer)++;
-        (*buffer_len)--;
-    }
-
-    /* ts */
-    if (*buffer_len < sizeof(uint16_t))
-        return;
-    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
-        (**buffer) = (uint8_t)(packet->ts >> (8 * i));
-        (*buffer)++;
-        (*buffer_len)--;
-    }
+    PACK(buffer, buffer_len, uint8_t, packet->command);
+    PACK(buffer, buffer_len, rs_port_id_t, packet->port);
+    PACK(buffer, buffer_len, rs_port_layer_seq_t, packet->seq);
+    PACK(buffer, buffer_len, uint16_t, packet->ts);
 
     if (rs_stats_packed_pack(&packet->stats, buffer, buffer_len))
         return;
 
     if (packet->command != 0) {
         for (int i = 0; i < RS_PORT_LAYER_COMMAND_LENGTH; i++) {
-            if ((*buffer_len) == 0)
-                return;
-            (**buffer) = packet->command_payload[i];
-            (*buffer)++;
-            (*buffer_len)--;
+            PACK(buffer, buffer_len, uint8_t, packet->command_payload[i]);
         }
     }
+
+pack_err:;
 }
 
 void rs_port_layer_packet_init(struct rs_port_layer_packet *packet,
@@ -85,57 +55,24 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
                               from_packet->payload_data,
                               from_packet->payload_data_len);
 
-    /* command */
-    if (packet->super.payload_data_len < 1)
-        return -1;
-    packet->command = *packet->super.payload_data;
-    packet->super.payload_data++;
-    packet->super.payload_data_len--;
-
-    /* port */
-    if (packet->super.payload_data_len < sizeof(rs_port_id_t))
-        return -1;
-    packet->port = 0;
-    for (int i = sizeof(rs_port_id_t) - 1; i >= 0; i--) {
-        packet->port += ((rs_port_id_t)(*packet->super.payload_data))
-                        << (8 * i);
-        packet->super.payload_data++;
-        packet->super.payload_data_len--;
-    }
-    /* seq */
-    if (packet->super.payload_data_len < sizeof(rs_port_layer_seq_t))
-        return -1;
-    packet->seq = 0;
-    for (int i = sizeof(rs_port_layer_seq_t) - 1; i >= 0; i--) {
-        packet->seq += ((rs_port_layer_seq_t)(*packet->super.payload_data))
-                       << (8 * i);
-        packet->super.payload_data++;
-        packet->super.payload_data_len--;
-    }
-
-    /* ts */
-    if (packet->super.payload_data_len < sizeof(uint16_t))
-        return -1;
-    packet->ts = 0;
-    for (int i = sizeof(uint16_t) - 1; i >= 0; i--) {
-        packet->ts += ((uint16_t)(*packet->super.payload_data)) << (8 * i);
-        packet->super.payload_data++;
-        packet->super.payload_data_len--;
-    }
+    UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
+           uint8_t, &packet->command);
+    UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
+           rs_port_id_t, &packet->port);
+    UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
+           rs_port_layer_seq_t, &packet->seq);
+    UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
+           uint16_t, &packet->ts);
 
     if (rs_stats_packed_unpack(&packet->stats, &packet->super.payload_data,
                                &packet->super.payload_data_len))
-        return -1;
+        goto unpack_err;
 
     /* Possibly set command_payload */
     if (packet->command != 0) {
         for (int i = 0; i < RS_PORT_LAYER_COMMAND_LENGTH; i++) {
-            if (packet->super.payload_data_len == 0)
-                return -1;
-
-            packet->command_payload[i] = (uint8_t)(*packet->super.payload_data);
-            packet->super.payload_data++;
-            packet->super.payload_data_len--;
+            UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
+                   uint8_t, &packet->command_payload[i]);
         }
     }
 
@@ -144,6 +81,9 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
     rs_packet_destroy(from_packet);
 
     return 0;
+
+unpack_err:
+    return -1;
 }
 
 static struct rs_packet_vtable vtable = {.destroy = &rs_packet_base_destroy,

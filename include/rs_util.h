@@ -61,4 +61,24 @@ inline struct timespec rs_timespec_plus_ms(struct timespec* in, double ms){
         TIMER_ ## TNAME ## _last_print = TIMER_ ## TNAME ## _print; \
     }
 
+
+#define PACK(buffer, buffer_len, type, val) \
+    if (*buffer_len < sizeof(type)) \
+        goto pack_err; \
+    for (int i = sizeof(type) - 1; i >= 0; i--) { \
+        (**buffer) = (uint8_t)(val >> (8 * i)); \
+        (*buffer)++; \
+        (*buffer_len)--; \
+    }
+
+#define UNPACK(buffer, buffer_len, type, pval) \
+    if (*buffer_len < sizeof(type)) \
+        goto unpack_err; \
+    *pval = 0; \
+    for (int i = sizeof(type) - 1; i >= 0; i--) { \
+        *pval += ((type)(**buffer)) << (8 * i); \
+        (*buffer)++; \
+        (*buffer_len)--; \
+    }
+
 #endif
