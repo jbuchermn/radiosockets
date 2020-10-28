@@ -164,9 +164,10 @@ retry:
                 goto retry;
             }
 
-            /* Handle earlier updates which have been missed (channel switched)
+            /* 
+             * Handle earlier updates which have been missed (channel switched)
              */
-            if (port->bound_channel != channel) {
+            if (port->bound_channel != channel && !port->owner) {
                 syslog(LOG_ERR, "Appears the port has switched channels");
                 port->bound_channel = channel;
             }
