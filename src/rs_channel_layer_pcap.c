@@ -418,10 +418,9 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     unsigned long long src_mac = layer->super.server->other_id;
     unsigned long long dst_mac = layer->super.server->own_id;
     for(int i=sizeof(rs_server_id_t); i<6; i++){
-        src_mac += 0xAA << (8*i);
-        dst_mac += 0xBB << (8*i);
+        src_mac += ((unsigned long long)0xAA) << (8*i);
+        dst_mac += ((unsigned long long)0xBB) << (8*i);
     }
-    printf("%12llx %12llx\n", src_mac, dst_mac);
 
     switch (pcap_datalink(layer->pcap)) {
     case DLT_IEEE802_11_RADIO:
