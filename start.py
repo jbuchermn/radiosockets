@@ -13,7 +13,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == "fake-pi":
         is_pi = True
 
-    sleep_s = 0.001
+    sleep_s = 0.01
     if is_pi:
         arg_own = "0xDD"
         arg_other = "0xAA"
@@ -36,7 +36,7 @@ if __name__ == '__main__':
         data_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         data_addr = ('127.0.0.1', 8885) if is_pi else ('127.0.0.1', 8881)
-        data_msg = "a" * 1000
+        data_msg = "a" * 1024 if is_pi else "a" * 128
 
         cnt = 0
         while True:

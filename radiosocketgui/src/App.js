@@ -58,7 +58,7 @@ const Statistics = (props) => {
                         ticks: {
                             beginAtZero: 0,
                             suggestedMin: 0.5,
-                            suggestedMax: 5
+                            suggestedMax: 1
                         }
                     }]
                 }
