@@ -415,14 +415,13 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     struct bpf_program bpfprogram;
     char program[200];
 
-    unsigned long long src_mac = 0x112233445566;
-    unsigned long long dst_mac = 0x112233445566;
-    for (int i = 0; i < sizeof(rs_server_id_t); i++) {
-        ((uint8_t *)(&src_mac))[5 - i] =
-            (uint8_t)(layer->super.server->own_id >> (8 * i));
-        ((uint8_t *)(&dst_mac))[5 - i] =
-            (uint8_t)(layer->super.server->other_id >> (8 * i));
+    unsigned long long src_mac = layer->super.server->other_id;
+    unsigned long long dst_mac = layer->super.server->own_id;
+    for(int i=sizeof(rs_server_id_t); i<6; i++){
+        src_mac += 0xAA << (8*i);
+        dst_mac += 0xBB << (8*i);
     }
+    printf("%12llx %12llx\n", src_mac, dst_mac);
 
     switch (pcap_datalink(layer->pcap)) {
     case DLT_IEEE802_11_RADIO:
@@ -509,9 +508,9 @@ static uint8_t ieee80211_header[] __attribute__((unused)) = {
     0x08, 0x01, 0x00, 0x00,
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     // src mac
-    0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+    0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA,
     // dst mac
-    0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
+    0xBB, 0xBB, 0xBB, 0xBB, 0xBB, 0xBB,
     //
     0x10, 0x86,
 };
