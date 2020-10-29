@@ -292,8 +292,9 @@ void rs_port_layer_main(struct rs_port_layer *layer,
             if (p) {
                 syslog(LOG_NOTICE, "Switch channel requested by owner: %d", channel);
                 p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_FOLLOWING;
-                p->cmd_switch_state.at = rs_timespec_plus_ms(
-                    &now, (RS_PORT_CMD_SWITCH_N_BROADCAST - n_broadcasts) *
+
+                p->cmd_switch_state.at = now;
+                timespec_plus_ms(&p->cmd_switch_state.at, (RS_PORT_CMD_SWITCH_N_BROADCAST - n_broadcasts) *
                               RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC);
                 p->cmd_switch_state.new_channel = channel;
             }
@@ -388,8 +389,9 @@ int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
     p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_OWNING;
     p->cmd_switch_state.n_broadcasts = 0;
     clock_gettime(CLOCK_REALTIME, &p->cmd_switch_state.begin);
-    p->cmd_switch_state.at = rs_timespec_plus_ms(
-        &p->cmd_switch_state.begin,
+    p->cmd_switch_state.at = p->cmd_switch_state.begin;
+    timespec_plus_ms(
+        &p->cmd_switch_state.at,
         RS_PORT_CMD_SWITCH_N_BROADCAST * RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC);
     p->cmd_switch_state.new_channel = new_channel;
 

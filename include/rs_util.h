@@ -25,13 +25,11 @@ inline uint16_t cur_msec(){
     return (ts.tv_nsec / 1000000L) + (ts.tv_sec * 1000L);
 }
 
-inline struct timespec rs_timespec_plus_ms(struct timespec* in, double ms){
-    struct timespec res;
-    uint64_t nsec = in->tv_nsec + 1000000000L * in->tv_sec;
+inline void timespec_plus_ms(struct timespec* in, double ms){
+    long long int nsec = (long long int)in->tv_nsec + 1000000000L * (long long int)in->tv_sec;
     nsec += 1000000L * ms;
-    res.tv_nsec = nsec % 1000000000L;
-    res.tv_sec = nsec / 1000000000L;
-    return res;
+    in->tv_nsec = nsec % 1000000000L;
+    in->tv_sec = nsec / 1000000000L;
 }
 
 
