@@ -173,7 +173,7 @@ retry:
              * Handle earlier updates which have been missed (channel switched)
              */
             if (port->bound_channel != channel && !port->owner) {
-                syslog(LOG_ERR, "Appears the port has switched channels");
+                syslog(LOG_ERR, "Appears the port has switched channels: %d", channel);
                 port->bound_channel = channel;
             }
 
