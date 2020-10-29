@@ -71,9 +71,15 @@ int rs_app_layer_open_connection(struct rs_app_layer *layer,
     addr_server.sin_port = htons(tcp_port);
     addr_server.sin_addr.s_addr = htonl(INADDR_ANY);
 
+    int opt = 1;
+    if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt,
+                   sizeof(opt)) < 0) {
+        syslog(LOG_ERR, "app layer: Could not set REUSEADDR | REUSEPORT");
+    }
+
     int err;
     if ((err = bind(sock, (struct sockaddr *)&addr_server,
-             sizeof(struct sockaddr_in)))) {
+                    sizeof(struct sockaddr_in)))) {
         syslog(LOG_ERR, "app layer: Could not bind socket: %d", err);
         return -1;
     }
@@ -121,7 +127,7 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
     for (int i = 0; i < layer->n_connections; i++) {
         int fd = accept(layer->connections[i]->socket, NULL, NULL);
         if (fd >= 0) {
-            if(layer->connections[i]->client_socket >= 0){
+            if (layer->connections[i]->client_socket >= 0) {
                 syslog(LOG_NOTICE, "app layer: Closed connection on port %d\n",
                        layer->connections[i]->port);
                 close(layer->connections[i]->client_socket);
@@ -159,33 +165,36 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
             if (conn->client_socket < 0)
                 continue;
 
-            int recv_len =
-                recv(conn->client_socket, conn->buffer + conn->buffer_at,
-                     conn->buffer_size - conn->buffer_at, 0);
+            for (int try = 0; try < 10; try ++) {
+                int recv_len =
+                    recv(conn->client_socket, conn->buffer + conn->buffer_at,
+                         conn->buffer_size - conn->buffer_at, 0);
 
-            if (recv_len <= 0) {
-                continue;
-            }
-
-            conn->buffer_at += recv_len;
-            rs_stat_register(&conn->stat, 8 * recv_len);
-
-            if (conn->frame_size_fixed > 0) {
-                if (conn->buffer_at == conn->buffer_size) {
-                    /* TODO Decide based on usage, if frame needs to be dropped */
-
-                    struct rs_packet packet;
-                    rs_packet_init(&packet, NULL, NULL, conn->buffer,
-                                   conn->frame_size_fixed);
-                    rs_port_layer_transmit(layer->server->port_layer, &packet,
-                                           conn->port);
-                    rs_packet_destroy(&packet);
-
-                    conn->buffer_at = 0;
+                if (recv_len <= 0) {
+                    continue;
                 }
-            } else {
-                /* TODO */
-                assert(0 && "Not implemented yet");
+
+                conn->buffer_at += recv_len;
+                rs_stat_register(&conn->stat, 8 * recv_len);
+
+                if (conn->frame_size_fixed > 0) {
+                    if (conn->buffer_at == conn->buffer_size) {
+                        /* TODO Decide based on usage, if frame needs to be
+                         * dropped */
+
+                        struct rs_packet packet;
+                        rs_packet_init(&packet, NULL, NULL, conn->buffer,
+                                       conn->frame_size_fixed);
+                        rs_port_layer_transmit(layer->server->port_layer,
+                                               &packet, conn->port);
+                        rs_packet_destroy(&packet);
+
+                        conn->buffer_at = 0;
+                    }
+                } else {
+                    /* TODO */
+                    assert(0 && "Not implemented yet");
+                }
             }
         }
     }

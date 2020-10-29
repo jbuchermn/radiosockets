@@ -1,38 +1,38 @@
 .App {
   text-align: center;
+  margin: 100px;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+.Stat-container {
+    height: 400px;
+    display: flex;
+    flex-direction:row;
+    justify-content: space-around;
+    align-items: start;
+    margin-bottom: 200px;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
+.Stat-container-row {
+    flex: 1;
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+.Port-control {
+    height: 100px;
+    display: flex;
+    flex-direction:row;
+    justify-content: space-around;
+    align-items: center;
+    margin-left: 100px;
+    margin-right: 100px;
 }
 
-.App-link {
-  color: #61dafb;
-}
-
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.Port-control-btn {
+    background-color: #000099;
+    height: 40px;
+    width: 80px;
+    line-height: 40px;
+    text-align: center;
+    color: white;
+    font-size: 20px;
+    border-radius: 20px;
 }

@@ -110,10 +110,51 @@ class Daemon:
         n = msg.payload_int
         s = msg.payload_char
         d = msg.payload_double
-        return [{
-            'title': '%s%i' % (s[i], n[i]),
-            'stats': d[CMD_REPORT_N*i:CMD_REPORT_N*(i+1)]
-        } for i, _ in enumerate(s)]
+        res = []
+
+        idx = 0
+        while idx < len(s):
+            if s[idx] in "PC":
+                res += [{
+                    'title': '%s%d' % (s[idx], n[CMD_REPORT_N*idx]),
+                    'id': n[CMD_REPORT_N*idx],
+                    'bound': n[CMD_REPORT_N*idx + 1],
+                    'kind': 'port' if s[idx] == "P" else "channel",
+                    'stats': {
+                        'tx_bits': d[CMD_REPORT_N*idx + 0],
+                        'tx_packet': d[CMD_REPORT_N*idx + 1],
+                        'tx_errors': d[CMD_REPORT_N*idx + 2],
+                        'rx_bits': d[CMD_REPORT_N*idx + 3],
+                        'rx_packets': d[CMD_REPORT_N*idx + 4],
+                        'rx_missed': d[CMD_REPORT_N*idx + 5],
+                        'rx_dt': d[CMD_REPORT_N*idx + 6],
+                        'other_rx_bits': d[CMD_REPORT_N*idx + 7],
+                        'other_rx_packets': d[CMD_REPORT_N*idx + 8],
+                        'other_rx_missed': d[CMD_REPORT_N*idx + 9],
+                        'other_rx_dt': d[CMD_REPORT_N*idx + 10],
+                    }
+                }]
+            elif s[idx] == "A":
+                res += [{
+                    'title': '%s%d' % (s[idx], n[CMD_REPORT_N*idx]),
+                    'id': n[CMD_REPORT_N*idx],
+                    'kind': 'app',
+                    'stats': {
+                        'tx_bits': d[CMD_REPORT_N*idx],
+                    }
+                }]
+            elif s[idx] == "U":
+                res += [{
+                    'title': 'Status',
+                    'id': n[CMD_REPORT_N*idx],
+                    'kind': 'status',
+                    'stats': {
+                        'usage': d[CMD_REPORT_N*idx],
+                    }
+                }]
+
+            idx+=1
+        return res
 
     def cmd_switch_channel(self, port, new_channel):
         msg = self._cmd(RS_MESSAGE_CMD_SWITCH_CHANNEL, [port, new_channel])

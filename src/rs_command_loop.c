@@ -22,7 +22,8 @@ static void handle_command(struct rs_message *command,
         answer->header.cmd = 0;
 
     } else if (command->header.cmd == RS_MESSAGE_CMD_REPORT) {
-        int n_reports = 1 + state->app_layer->n_connections + state->port_layer->n_ports;
+        int n_reports =
+            1 + state->app_layer->n_connections + state->port_layer->n_ports;
         for (int c = 0; c < state->n_channel_layers; c++) {
             for (int ch = 0;
                  ch < rs_channel_layer_ch_n(state->channel_layers[c]); ch++) {
@@ -33,7 +34,7 @@ static void handle_command(struct rs_message *command,
         }
 
         answer->header.len_payload_char = n_reports;
-        answer->header.len_payload_int = n_reports;
+        answer->header.len_payload_int = RS_STATS_PLACE_N * n_reports;
         answer->header.len_payload_double = RS_STATS_PLACE_N * n_reports;
 
         answer->payload_char =
@@ -45,13 +46,15 @@ static void handle_command(struct rs_message *command,
 
         int idx = 0;
         answer->payload_char[idx] = 'U';
-        answer->payload_int[idx] = 0;
-        answer->payload_double[idx] = rs_stat_current(&state->usage);
+        answer->payload_int[idx * RS_STATS_PLACE_N] = 0;
+        answer->payload_double[idx] =
+            rs_stat_current(&state->usage); /* TODO hack */
         idx++;
 
         for (int i = 0; i < state->app_layer->n_connections; i++) {
             answer->payload_char[idx] = 'A';
-            answer->payload_int[idx] = state->app_layer->connections[i]->port;
+            answer->payload_int[idx * RS_STATS_PLACE_N] =
+                state->app_layer->connections[i]->port;
             answer->payload_double[idx * RS_STATS_PLACE_N] =
                 rs_stat_current(&state->app_layer->connections[i]->stat);
             idx++;
@@ -59,7 +62,10 @@ static void handle_command(struct rs_message *command,
 
         for (int i = 0; i < state->port_layer->n_ports; i++) {
             answer->payload_char[idx] = 'P';
-            answer->payload_int[idx] = state->port_layer->ports[i]->id;
+            answer->payload_int[idx * RS_STATS_PLACE_N] =
+                state->port_layer->ports[i]->id;
+            answer->payload_int[idx * RS_STATS_PLACE_N + 1] =
+                state->port_layer->ports[i]->bound_channel;
 
             rs_stats_place(&state->port_layer->ports[i]->stats,
                            answer->payload_double + (idx * RS_STATS_PLACE_N));
@@ -71,7 +77,7 @@ static void handle_command(struct rs_message *command,
                  ch < rs_channel_layer_ch_n(state->channel_layers[c]); ch++) {
                 if (state->channel_layers[c]->channels[ch].is_in_use) {
                     answer->payload_char[idx] = 'C';
-                    answer->payload_int[idx] =
+                    answer->payload_int[idx * RS_STATS_PLACE_N] =
                         state->channel_layers[c]->channels[ch].id;
 
                     rs_stats_place(
