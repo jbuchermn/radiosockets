@@ -77,7 +77,7 @@ int rs_app_layer_open_connection(struct rs_app_layer *layer,
         syslog(LOG_ERR, "app layer: Could not bind socket: %d", err);
         return -1;
     }
-    listen(sock, 1);
+    listen(sock, 5);
 
     /* put it in non-blocking mode */
     int flags = fcntl(sock, F_GETFL);
@@ -119,11 +119,7 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
                        rs_port_id_t received_port) {
 
     for (int i = 0; i < layer->n_connections; i++) {
-        struct sockaddr_in client_address;
-        socklen_t client_address_size;
-        int fd = accept(layer->connections[i]->socket,
-                        (struct sockaddr *)&client_address,
-                        &client_address_size);
+        int fd = accept(layer->connections[i]->socket, NULL, NULL);
         if (fd >= 0) {
             if(layer->connections[i]->client_socket >= 0){
                 syslog(LOG_NOTICE, "app layer: Closed connection on port %d\n",
@@ -176,6 +172,8 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
 
             if (conn->frame_size_fixed > 0) {
                 if (conn->buffer_at == conn->buffer_size) {
+                    /* TODO Decide based on usage, if frame needs to be dropped */
+
                     struct rs_packet packet;
                     rs_packet_init(&packet, NULL, NULL, conn->buffer,
                                    conn->frame_size_fixed);

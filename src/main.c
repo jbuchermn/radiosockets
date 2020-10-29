@@ -8,15 +8,15 @@
 #include <syslog.h>
 #include <unistd.h>
 
-#include "rs_util.h"
 #include "rs_app_layer.h"
 #include "rs_channel_layer_pcap.h"
 #include "rs_command_loop.h"
 #include "rs_packet.h"
 #include "rs_port_layer.h"
 #include "rs_server_state.h"
+#include "rs_util.h"
 
-#define MAIN_LOOP_NS 200 /*us*/ * 1000L
+#define MAIN_LOOP_NS 500 /*us*/ * 1000L
 /* #define MAIN_PRINT_STATS */
 /* #define MAIN_PRINT_STATS_N 1000 */
 
@@ -75,10 +75,10 @@ int main(int argc, char **argv) {
 
     /* set up state */
     state.running = 1;
+    rs_stat_init(&state.usage, RS_STAT_AGG_AVG, "usage", "", 1.0);
+
     config_init(&state.config);
     if (config_read(&state.config, fopen(conf_file, "r")) != CONFIG_TRUE) {
-        printf("%s: %d\n", config_error_text(&state.config),
-               config_error_line(&state.config));
         syslog(LOG_ERR, "Could not open config");
 
         goto error;
@@ -101,9 +101,8 @@ int main(int argc, char **argv) {
     state.other_id = other;
 
     /* set up channel layers */
-    config_setting_t* cc = config_lookup(&state.config, "channels");
-    int n_channel_layers =
-        cc ? config_setting_length(cc) : 0;
+    config_setting_t *cc = config_lookup(&state.config, "channels");
+    int n_channel_layers = cc ? config_setting_length(cc) : 0;
     layers1 = calloc(n_channel_layers, sizeof(void *));
     layers1_alloc = calloc(n_channel_layers, sizeof(void *));
     for (int i = 0; i < n_channel_layers; i++) {
@@ -119,7 +118,7 @@ int main(int argc, char **argv) {
 
         if (!strcmp(kind, "pcap")) {
             sprintf(p, "channels.[%d].pcap", i);
-            config_setting_t* conf = config_lookup(&state.config, p);
+            config_setting_t *conf = config_lookup(&state.config, p);
 
             struct rs_channel_layer_pcap *layer1 =
                 calloc(1, sizeof(struct rs_channel_layer_pcap));
@@ -151,9 +150,6 @@ int main(int argc, char **argv) {
     /* set up command loop */
     rs_command_loop_init(&command_loop, sock_file);
 
-    struct timespec last_loop;
-    clock_gettime(CLOCK_REALTIME, &last_loop);
-
 #ifdef MAIN_PRINT_STATS
     int printf_cnt = 0;
 #endif
@@ -161,7 +157,10 @@ int main(int argc, char **argv) {
     /* main loop */
     signal(SIGINT, signal_handler);
     while (state.running) {
+        struct timespec loop_begin;
+        clock_gettime(CLOCK_REALTIME, &loop_begin);
         TIMER_START(main);
+
         /* Do stuff */
         rs_command_loop_run(&command_loop, &state);
 
@@ -191,22 +190,21 @@ int main(int argc, char **argv) {
         TIMER_STOP(main, 0);
         TIMER_PRINT(main, 2);
 
-        /* TODO if loop is not limited: throttle down, skip frames etc! */
-
         /* Loop limit */
         struct timespec loop;
         clock_gettime(CLOCK_REALTIME, &loop);
 
-        struct timespec sleep = {0};
         long int nsec_diff =
-            (loop.tv_sec > last_loop.tv_sec ? 1000000000L : 0) + loop.tv_nsec -
-            last_loop.tv_nsec;
+            (loop.tv_sec > loop_begin.tv_sec ? 1000000000L : 0) + loop.tv_nsec -
+            loop_begin.tv_nsec;
 
-        sleep.tv_nsec = nsec_diff > MAIN_LOOP_NS ? 0 : MAIN_LOOP_NS - nsec_diff;
-        if (sleep.tv_nsec)
+        rs_stat_register(&state.usage, (double)nsec_diff / ((double)MAIN_LOOP_NS));
+
+        if (nsec_diff < MAIN_LOOP_NS) {
+            struct timespec sleep = {0};
+            sleep.tv_nsec = MAIN_LOOP_NS - nsec_diff;
             nanosleep(&sleep, &sleep);
-
-        last_loop = loop;
+        }
     }
 
     /* shutdown */

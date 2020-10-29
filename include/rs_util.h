@@ -1,7 +1,7 @@
 #ifndef RS_UTIL_H
 #define RS_UTIL_H
 
-#define __NO_TIMER__
+// #define __NO_TIMER__
 
 #include <time.h>
 #include <stdint.h>

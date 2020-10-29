@@ -23,8 +23,11 @@ if __name__ == '__main__':
     else:
         arg_own = "0xAA"
         arg_other = "0xDD"
+    data_addr = ('127.0.0.1', 8885) if is_pi else ('127.0.0.1', 8881)
 
     daemon = Daemon("./basic.conf", arg_own, arg_other)
+    # daemon = Daemon("./basic.conf", arg_own, arg_other,
+    #                 "valgrind --leak-check=full --track-origins=yes -s")
     daemon.start()
 
     server = None
@@ -34,13 +37,12 @@ if __name__ == '__main__':
 
     try:
         time.sleep(2)
-        try:
-            data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        except:
-            print("ERROR: Could not connect to data socket")
 
-        data_addr = ('127.0.0.1', 8885) if is_pi else ('127.0.0.1', 8881)
-        data_socket.connect(data_addr)
+        data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            data_socket.connect(data_addr)
+        except Exception as e:
+            print("Could not connect to TCP socket: %s" % e)
 
         print("%dkbps => frame size %db" % (kbits, frame_size))
         data_msg = "a" * frame_size
@@ -50,21 +52,23 @@ if __name__ == '__main__':
             try:
                 data_socket.send(data_msg.encode('ascii'))
             except Exception as e:
-                print(e)
+                print("Could not send to TCP socket: %s" % e)
+                time.sleep(1)
                 try:
-                    data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    data_socket = socket.socket(
+                        socket.AF_INET, socket.SOCK_STREAM)
                     data_socket.connect(data_addr)
                 except Exception as e:
-                    print(e)
+                    print("Could not connect to TCP socket: %s" % e)
 
-
-            cnt += 1
-            if cnt % int(1 / sleep_s) == 0:
-                b = 0
-                print("-----------------------------------")
-                stat = daemon.cmd_report()
-                for st in stat:
-                    print("%10s: %s" % (st['title'], st['stats']))
+            if server is None:
+                cnt += 1
+                if cnt % int(1 / sleep_s) == 0:
+                    b = 0
+                    print("-----------------------------------")
+                    stat = daemon.cmd_report()
+                    for st in stat:
+                        print("%10s: %s" % (st['title'], st['stats']))
 
             time.sleep(sleep_s)
     finally:

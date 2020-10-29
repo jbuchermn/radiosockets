@@ -456,6 +456,8 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
 }
 
 void rs_channel_layer_pcap_destroy(struct rs_channel_layer *super) {
+    rs_channel_layer_base_destroy(super);
+
     struct rs_channel_layer_pcap *layer = rs_cast(rs_channel_layer_pcap, super);
     if (layer->pcap)
         pcap_close(layer->pcap);

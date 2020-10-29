@@ -40,6 +40,7 @@ void rs_channel_layer_init(struct rs_channel_layer *layer,
                            struct rs_server_state *server,
                            uint8_t ch_base,
                            struct rs_channel_layer_vtable *vtable);
+void rs_channel_layer_base_destroy(struct rs_channel_layer* layer);
 int rs_channel_layer_owns_channel(struct rs_channel_layer *layer,
                                   rs_channel_t channel);
 

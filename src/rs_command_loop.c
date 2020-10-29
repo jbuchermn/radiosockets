@@ -22,7 +22,7 @@ static void handle_command(struct rs_message *command,
         answer->header.cmd = 0;
 
     } else if (command->header.cmd == RS_MESSAGE_CMD_REPORT) {
-        int n_reports = state->app_layer->n_connections + state->port_layer->n_ports;
+        int n_reports = 1 + state->app_layer->n_connections + state->port_layer->n_ports;
         for (int c = 0; c < state->n_channel_layers; c++) {
             for (int ch = 0;
                  ch < rs_channel_layer_ch_n(state->channel_layers[c]); ch++) {
@@ -44,6 +44,11 @@ static void handle_command(struct rs_message *command,
             calloc(answer->header.len_payload_double, sizeof(double));
 
         int idx = 0;
+        answer->payload_char[idx] = 'U';
+        answer->payload_int[idx] = 0;
+        answer->payload_double[idx] = rs_stat_current(&state->usage);
+        idx++;
+
         for (int i = 0; i < state->app_layer->n_connections; i++) {
             answer->payload_char[idx] = 'A';
             answer->payload_int[idx] = state->app_layer->connections[i]->port;
@@ -115,7 +120,7 @@ void rs_command_loop_init(struct rs_command_loop *loop, const char *sock_file) {
     int flags = fcntl(loop->socket_fd, F_GETFL);
     fcntl(loop->socket_fd, F_SETFL, flags | O_NONBLOCK);
 
-    syslog(LOG_DEBUG, "command loop: Server listening on socket");
+    syslog(LOG_DEBUG, "command loop: Server listening on socket %s", sock_file);
 }
 
 void rs_command_loop_destroy(struct rs_command_loop *loop) {

@@ -4,6 +4,7 @@
 #include <libconfig.h>
 #include <stdint.h>
 
+#include "rs_stat.h"
 #include "rs_channel_layer.h"
 
 struct rs_command_loop;
@@ -15,6 +16,7 @@ typedef uint16_t rs_server_id_t;
 
 struct rs_server_state {
     int running;
+    struct rs_stat usage;
 
     config_t config;
 

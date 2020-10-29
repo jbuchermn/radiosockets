@@ -22,6 +22,10 @@ void rs_channel_layer_init(struct rs_channel_layer *layer,
         rs_stats_init(&layer->channels[i].stats);
     }
 }
+void rs_channel_layer_base_destroy(struct rs_channel_layer* layer){
+    free(layer->channels);
+    layer->channels = NULL;
+}
 
 int rs_channel_layer_owns_channel(struct rs_channel_layer *layer,
                                   rs_channel_t channel) {

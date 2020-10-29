@@ -17,10 +17,13 @@ def cmd(cmd):
 
 
 class Daemon:
-    def __init__(self, conf_template, own_id, other_id):
+    def __init__(self, conf_template, own_id, other_id, debug=""):
         self.conf_template = conf_template
         self.own_id = own_id
         self.other_id = other_id
+
+        # valgrind / gdb
+        self.debug = debug
 
         self.socket = "/tmp/radiosocketd_%d.sock" % os.getpid()
         self.conf = "/tmp/radiosocketd_%d.conf" % os.getpid()
@@ -53,8 +56,8 @@ class Daemon:
                     os.kill(pid, signal.SIGINT)
 
         input("Confirm? ")
-        self.daemon = Popen(("sudo ./radiosocketd -v -c %s -s %s" %
-                             (self.conf, self.socket)).split())
+        self.daemon = Popen(("sudo %s ./radiosocketd -v -c %s -s %s" %
+                             (self.debug, self.conf, self.socket)).split())
 
     def close(self):
         self.cmd_close()
@@ -71,6 +74,9 @@ class Daemon:
 
             rs_message_send(s, msg)
             answer = rs_message_recv(s)
+
+            if answer is None:
+                return None
 
             if msg.id != answer.id:
                 print("ERROR: Id mismatch")
