@@ -22,7 +22,7 @@ static void handle_command(struct rs_message *command,
         answer->header.cmd = 0;
 
     } else if (command->header.cmd == RS_MESSAGE_CMD_REPORT) {
-        int n_reports = state->port_layer->n_ports;
+        int n_reports = state->app_layer->n_connections + state->port_layer->n_ports;
         for (int c = 0; c < state->n_channel_layers; c++) {
             for (int ch = 0;
                  ch < rs_channel_layer_ch_n(state->channel_layers[c]); ch++) {
@@ -43,8 +43,15 @@ static void handle_command(struct rs_message *command,
         answer->payload_double =
             calloc(answer->header.len_payload_double, sizeof(double));
 
-
         int idx = 0;
+        for (int i = 0; i < state->app_layer->n_connections; i++) {
+            answer->payload_char[idx] = 'A';
+            answer->payload_int[idx] = state->app_layer->connections[i]->port;
+            answer->payload_double[idx * RS_STATS_PLACE_N] =
+                rs_stat_current(&state->app_layer->connections[i]->stat);
+            idx++;
+        }
+
         for (int i = 0; i < state->port_layer->n_ports; i++) {
             answer->payload_char[idx] = 'P';
             answer->payload_int[idx] = state->port_layer->ports[i]->id;
@@ -53,7 +60,6 @@ static void handle_command(struct rs_message *command,
                            answer->payload_double + (idx * RS_STATS_PLACE_N));
             idx++;
         }
-
 
         for (int c = 0; c < state->n_channel_layers; c++) {
             for (int ch = 0;

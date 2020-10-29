@@ -10,10 +10,13 @@ if __name__ == '__main__':
     os.system('make')
 
     is_pi = 'pi' in os.uname()[1]
-    if len(sys.argv) > 1 and sys.argv[1] == "fake-pi":
+    if len(sys.argv) > 1 and "fake-pi" in " ".join(sys.argv[1:]):
         is_pi = True
 
-    sleep_s = 0.01
+    sleep_s = 1. / 60.
+    kbits = 50000 if is_pi else 100
+    frame_size = int(1000 * kbits / 8 * sleep_s)
+
     if is_pi:
         arg_own = "0xDD"
         arg_other = "0xAA"
@@ -24,23 +27,36 @@ if __name__ == '__main__':
     daemon = Daemon("./basic.conf", arg_own, arg_other)
     daemon.start()
 
-    print("UDP datarate: %5.2fMbps" % (0.008 / sleep_s))
-
     server = None
-    if len(sys.argv) > 1 and sys.argv[1] == "gui":
+    if len(sys.argv) > 1 and "gui" in " ".join(sys.argv[1:]):
         server = Webserver(daemon)
         server.start()
 
     try:
         time.sleep(2)
-        data_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        except:
+            print("ERROR: Could not connect to data socket")
 
         data_addr = ('127.0.0.1', 8885) if is_pi else ('127.0.0.1', 8881)
-        data_msg = "a" * 1024 if is_pi else "a" * 128
+        data_socket.connect(data_addr)
+
+        print("%dkbps => frame size %db" % (kbits, frame_size))
+        data_msg = "a" * frame_size
 
         cnt = 0
         while True:
-            data_socket.sendto(data_msg.encode('ascii'), data_addr)
+            try:
+                data_socket.send(data_msg.encode('ascii'))
+            except Exception as e:
+                print(e)
+                try:
+                    data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    data_socket.connect(data_addr)
+                except Exception as e:
+                    print(e)
+
 
             cnt += 1
             if cnt % int(1 / sleep_s) == 0:

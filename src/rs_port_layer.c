@@ -104,6 +104,10 @@ int _transmit(struct rs_port_layer *layer, struct rs_port_layer_packet *packet,
 int rs_port_layer_transmit(struct rs_port_layer *layer,
                            struct rs_packet *send_packet, rs_port_id_t port) {
 
+    if(send_packet->payload_data_len > 1400){
+        syslog(LOG_ERR, "Packet too large: %d", send_packet->payload_data_len);
+    }
+
     struct rs_port *p = NULL;
     for (int i = 0; i < layer->n_ports; i++) {
         if (layer->ports[i]->id == port) {
@@ -113,7 +117,8 @@ int rs_port_layer_transmit(struct rs_port_layer *layer,
     }
 
     if (!p) {
-        syslog(LOG_ERR, "Unknown port %d", port);
+        syslog(LOG_ERR, "Unknown port: %d", port);
+        return 0;
     }
 
     struct rs_port_layer_packet packed;

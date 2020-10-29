@@ -190,6 +190,9 @@ int main(int argc, char **argv) {
 
         TIMER_STOP(main, 0);
         TIMER_PRINT(main, 2);
+
+        /* TODO if loop is not limited: throttle down, skip frames etc! */
+
         /* Loop limit */
         struct timespec loop;
         clock_gettime(CLOCK_REALTIME, &loop);

@@ -2,9 +2,10 @@
 #define RS_APP_LAYER_H
 
 #include <arpa/inet.h>
+#include <libconfig.h>
 
-#include "rs_stat.h"
 #include "rs_port_layer.h"
+#include "rs_stat.h"
 
 struct rs_server_state;
 struct rs_app_connection;
@@ -19,22 +20,27 @@ struct rs_app_layer {
 void rs_app_layer_init(struct rs_app_layer *layer,
                        struct rs_server_state *server);
 
-void rs_app_layer_open_connection(struct rs_app_layer *layer, rs_port_id_t port,
-                                  int udp_port, int frame_size);
+int rs_app_layer_open_connection(struct rs_app_layer *layer,
+                                 config_setting_t *conf);
 void rs_app_layer_destroy(struct rs_app_layer *layer);
 void rs_app_connection_destroy(struct rs_app_connection *connection);
 
 void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
                        rs_port_id_t received_port);
 
-#define RS_APP_CONNECTION_BUFFER 10
+/* Maximum supported frame size (in bytes) in sep-mode */
+#define RS_APP_BUFFER_SIZE 500000
 
 struct rs_app_connection {
     rs_port_id_t port;
-    int frame_size;
 
-    uint8_t* buffer;
-    int buffer_begin_at;
+    /* frame configuration */
+    uint8_t *frame_sep;
+    uint8_t frame_sep_size;
+    int frame_size_fixed; /* > 0 indicates fixed fame size mode */
+
+    /* buffering */
+    uint8_t *buffer;
     int buffer_at;
     int buffer_size;
 
@@ -43,8 +49,7 @@ struct rs_app_connection {
     int socket;
     struct sockaddr_in addr_server;
 
-    int addr_client_len; /* > 0 indicates there is a connection */
-    struct sockaddr_in addr_client;
+    int client_socket;
 };
 
 #endif
