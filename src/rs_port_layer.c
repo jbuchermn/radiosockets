@@ -290,6 +290,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                 }
             }
             if (p) {
+                syslog(LOG_NOTICE, "Switch channel requested by owner: %d", channel);
                 p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_FOLLOWING;
                 p->cmd_switch_state.at = rs_timespec_plus_ms(
                     &now, (RS_PORT_CMD_SWITCH_N_BROADCAST - n_broadcasts) *
