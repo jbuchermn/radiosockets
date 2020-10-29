@@ -80,7 +80,7 @@ int _transmit(struct rs_port_layer *layer, struct rs_port_layer_packet *packet,
     struct rs_channel_layer *ch =
         rs_server_channel_layer_for_channel(layer->server, port->bound_channel);
     if (!ch) {
-        syslog(LOG_ERR, "Invalid channel");
+        syslog(LOG_ERR, "Invalid channel: %d", port->bound_channel);
     }
 
     /* Publish stats */
