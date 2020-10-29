@@ -38,8 +38,8 @@ inline struct timespec rs_timespec_plus_ms(struct timespec* in, double ms){
 #define PACK(buffer, buffer_len, type, val) \
     if (*buffer_len < sizeof(type)) \
         goto pack_err; \
-    for (int i = sizeof(type) - 1; i >= 0; i--) { \
-        (**buffer) = (uint8_t)(val >> (8 * i)); \
+    for (int PACK_i = sizeof(type) - 1; PACK_i >= 0; PACK_i--) { \
+        (**buffer) = (uint8_t)((val) >> (8 * PACK_i)); \
         (*buffer)++; \
         (*buffer_len)--; \
     }
@@ -48,8 +48,8 @@ inline struct timespec rs_timespec_plus_ms(struct timespec* in, double ms){
     if (*buffer_len < sizeof(type)) \
         goto unpack_err; \
     *pval = 0; \
-    for (int i = sizeof(type) - 1; i >= 0; i--) { \
-        *pval += ((type)(**buffer)) << (8 * i); \
+    for (int UNPACK_i = sizeof(type) - 1; UNPACK_i >= 0; UNPACK_i--) { \
+        *(pval) += ((type)(**buffer)) << (8 * UNPACK_i); \
         (*buffer)++; \
         (*buffer_len)--; \
     }

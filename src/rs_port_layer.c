@@ -278,7 +278,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
         } else if (received->command == RS_PORT_CMD_SWITCH_CHANNEL) {
 
             rs_channel_t channel =
-                ((uint16_t)received->command_payload[0] << 8) +
+                (received->command_payload[0] << 8) +
                 received->command_payload[1];
             int n_broadcasts = received->command_payload[2];
 
