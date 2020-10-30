@@ -302,7 +302,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                 p->cmd_switch_state.new_channel = channel;
             }
 
-        } else if (received->command == RS_PORT_CMD_SWITCH_CHANNEL) {
+        } else if (received->command == RS_PORT_CMD_REQUEST_SWITCH_CHANNEL) {
             /* request switch channel */
             rs_channel_t channel = (received->command_payload[0] << 8) +
                                    received->command_payload[1];
@@ -310,9 +310,10 @@ void rs_port_layer_main(struct rs_port_layer *layer,
             for (int i = 0; i < layer->n_ports; i++) {
                 if (layer->ports[i]->id == received->port) {
                     p = layer->ports[i];
-                    break;
+                        break;
                 }
             }
+            printf("REQUESTED: %d\n", received->port);
             if (p) {
                 syslog(LOG_NOTICE, "Switch channel requested: %d",
                        channel);
@@ -419,10 +420,6 @@ int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
         syslog(LOG_ERR, "Unknown port");
         return -1;
     }
-    if (!p->owner) {
-        syslog(LOG_ERR, "Channel switch can only be executed by owner");
-        return -2;
-    }
 
     p->cmd_switch_state.n_broadcasts = 0;
     clock_gettime(CLOCK_REALTIME, &p->cmd_switch_state.begin);
@@ -431,7 +428,6 @@ int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
     timespec_plus_ms(&p->cmd_switch_state.at,
                      RS_PORT_CMD_SWITCH_N_BROADCAST *
                          RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC);
-    p->cmd_switch_state.at = p->cmd_switch_state.begin;
 
     if (p->owner) {
         p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_OWNING;
