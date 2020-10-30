@@ -104,7 +104,7 @@ int _transmit(struct rs_port_layer *layer, struct rs_port_layer_packet *packet,
 int rs_port_layer_transmit(struct rs_port_layer *layer,
                            struct rs_packet *send_packet, rs_port_id_t port) {
 
-    if(send_packet->payload_data_len > 1400){
+    if (send_packet->payload_data_len > 1400) {
         syslog(LOG_ERR, "Packet too large: %d", send_packet->payload_data_len);
     }
 
@@ -169,11 +169,12 @@ retry:
                 goto retry;
             }
 
-            /* 
+            /*
              * Handle earlier updates which have been missed (channel switched)
              */
             if (port->bound_channel != channel && !port->owner) {
-                syslog(LOG_ERR, "Appears the port has switched channels: %d", channel);
+                syslog(LOG_ERR, "Appears the port has switched channels: %d",
+                       channel);
                 port->bound_channel = channel;
             }
 
@@ -255,7 +256,8 @@ static void _send_command(struct rs_port_layer *layer, struct rs_port *port,
     struct rs_port_layer_packet packet;
     rs_port_layer_packet_init(&packet, NULL, NULL, dummy,
                               RS_PORT_CMD_DUMMY_SIZE);
-    memcpy(packet.command_payload, command_payload, RS_PORT_LAYER_COMMAND_LENGTH);
+    memcpy(packet.command_payload, command_payload,
+           RS_PORT_LAYER_COMMAND_LENGTH);
     packet.command = command;
     packet.super.payload_ownership = NULL;
 
@@ -270,16 +272,14 @@ void rs_port_layer_main(struct rs_port_layer *layer,
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
     if (received) {
-        /* heartbeat */
         if (received->command == RS_PORT_CMD_HEARTBEAT) {
-            /* okay */
+            /* heartbeat */
 
-            /* switch channel */
         } else if (received->command == RS_PORT_CMD_SWITCH_CHANNEL) {
+            /* switch channel */
 
-            rs_channel_t channel =
-                (received->command_payload[0] << 8) +
-                received->command_payload[1];
+            rs_channel_t channel = (received->command_payload[0] << 8) +
+                                   received->command_payload[1];
             int n_broadcasts = received->command_payload[2];
 
             struct rs_port *p = NULL;
@@ -290,17 +290,39 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                 }
             }
             if (p) {
-                syslog(LOG_NOTICE, "Switch channel requested by owner: %d", channel);
+                syslog(LOG_NOTICE, "Switch channel announced by owner: %d",
+                       channel);
                 p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_FOLLOWING;
 
                 p->cmd_switch_state.at = now;
-                timespec_plus_ms(&p->cmd_switch_state.at, (RS_PORT_CMD_SWITCH_N_BROADCAST - n_broadcasts) *
-                              RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC);
+                timespec_plus_ms(
+                    &p->cmd_switch_state.at,
+                    (RS_PORT_CMD_SWITCH_N_BROADCAST - n_broadcasts) *
+                        RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC);
                 p->cmd_switch_state.new_channel = channel;
+            }
+
+        } else if (received->command == RS_PORT_CMD_SWITCH_CHANNEL) {
+            /* request switch channel */
+            rs_channel_t channel = (received->command_payload[0] << 8) +
+                                   received->command_payload[1];
+            struct rs_port *p = NULL;
+            for (int i = 0; i < layer->n_ports; i++) {
+                if (layer->ports[i]->id == received->port) {
+                    p = layer->ports[i];
+                    break;
+                }
+            }
+            if (p) {
+                syslog(LOG_NOTICE, "Switch channel requested: %d",
+                       channel);
+                if(p->cmd_switch_state.state == RS_PORT_CMD_SWITCH_NONE){
+                    rs_port_layer_switch_channel(layer, received->port, channel);
+                }
             }
         }
     } else {
-        /* Ensure all needed channels (and no more are opened) */
+        /* ensure all needed channels (and no more are opened) */
         for (int i = 0; i < layer->server->n_channel_layers; i++) {
             rs_channel_layer_close_all_channels(
                 layer->server->channel_layers[i]);
@@ -321,8 +343,10 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                 RS_PORT_CMD_SWITCH_NONE)
                 continue;
 
-            if (layer->ports[i]->cmd_switch_state.state ==
-                    RS_PORT_CMD_SWITCH_OWNING &&
+            if ((layer->ports[i]->cmd_switch_state.state ==
+                     RS_PORT_CMD_SWITCH_OWNING ||
+                 layer->ports[i]->cmd_switch_state.state ==
+                     RS_PORT_CMD_SWITCH_REQUESTING) &&
 
                 layer->ports[i]->cmd_switch_state.n_broadcasts <
                     RS_PORT_CMD_SWITCH_N_BROADCAST &&
@@ -330,6 +354,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                 msec_diff(now, layer->ports[i]->cmd_switch_state.begin) >
                     layer->ports[i]->cmd_switch_state.n_broadcasts *
                         RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC) {
+                /* broadcast switch or request */
 
                 assert(sizeof(rs_port_id_t) == 2 && sizeof(rs_channel_t) == 2);
                 uint8_t cmd[RS_PORT_LAYER_COMMAND_LENGTH] = {
@@ -343,12 +368,25 @@ void rs_port_layer_main(struct rs_port_layer *layer,
 
                 layer->ports[i]->cmd_switch_state.n_broadcasts++;
                 _send_command(layer, layer->ports[i],
-                              RS_PORT_CMD_SWITCH_CHANNEL, cmd);
+                              layer->ports[i]->cmd_switch_state.state ==
+                                      RS_PORT_CMD_SWITCH_OWNING
+                                  ? RS_PORT_CMD_SWITCH_CHANNEL
+                                  : RS_PORT_CMD_REQUEST_SWITCH_CHANNEL,
+                              cmd);
 
             } else if (msec_diff(now, layer->ports[i]->cmd_switch_state.at) >
                        0) {
-                layer->ports[i]->bound_channel =
-                    layer->ports[i]->cmd_switch_state.new_channel;
+                /* finish switch or request */
+
+                if (layer->ports[i]->cmd_switch_state.state ==
+                        RS_PORT_CMD_SWITCH_FOLLOWING ||
+                    layer->ports[i]->cmd_switch_state.state ==
+                        RS_PORT_CMD_SWITCH_OWNING) {
+
+                    layer->ports[i]->bound_channel =
+                        layer->ports[i]->cmd_switch_state.new_channel;
+                }
+
                 layer->ports[i]->cmd_switch_state.state =
                     RS_PORT_CMD_SWITCH_NONE;
             }
@@ -386,14 +424,20 @@ int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
         return -2;
     }
 
-    p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_OWNING;
     p->cmd_switch_state.n_broadcasts = 0;
     clock_gettime(CLOCK_REALTIME, &p->cmd_switch_state.begin);
-    p->cmd_switch_state.at = p->cmd_switch_state.begin;
-    timespec_plus_ms(
-        &p->cmd_switch_state.at,
-        RS_PORT_CMD_SWITCH_N_BROADCAST * RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC);
     p->cmd_switch_state.new_channel = new_channel;
+    p->cmd_switch_state.at = p->cmd_switch_state.begin;
+    timespec_plus_ms(&p->cmd_switch_state.at,
+                     RS_PORT_CMD_SWITCH_N_BROADCAST *
+                         RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC);
+    p->cmd_switch_state.at = p->cmd_switch_state.begin;
+
+    if (p->owner) {
+        p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_OWNING;
+    } else {
+        p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_REQUESTING;
+    }
 
     return 0;
 }

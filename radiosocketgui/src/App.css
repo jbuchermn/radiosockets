@@ -27,6 +27,7 @@
 }
 
 .Port-control-btn {
+    cursor: pointer;
     background-color: #000099;
     height: 40px;
     width: 80px;

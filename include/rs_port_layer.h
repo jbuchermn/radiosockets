@@ -63,6 +63,7 @@ int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
 
 #define RS_PORT_CMD_DUMMY_SIZE 1
 #define RS_PORT_CMD_SWITCH_CHANNEL 0xCC
+#define RS_PORT_CMD_REQUEST_SWITCH_CHANNEL 0xC0
 #define RS_PORT_CMD_SWITCH_N_BROADCAST 10
 #define RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC 50
 
@@ -87,6 +88,7 @@ struct rs_port {
             RS_PORT_CMD_SWITCH_NONE,
             RS_PORT_CMD_SWITCH_OWNING,
             RS_PORT_CMD_SWITCH_FOLLOWING,
+            RS_PORT_CMD_SWITCH_REQUESTING
         } state;
         struct timespec begin;
         struct timespec at;
