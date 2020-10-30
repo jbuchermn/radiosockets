@@ -77,12 +77,12 @@ export default (props) => {
                         labels: props.report.stats.map(r => r.t),
                         datasets: [
                             {
-                                ...args('rgba(75,192,192)'),
+                                ...args('rgba(155,102,192)'),
                                 label: 'RX Mbps (sent)',
-                                data: props.report.stats.map(r => r.rx_bits / 1000000 / (1. - r.tx_missed))
+                                data: props.report.stats.map(r => r.rx_bits / 1000000 / (1. - r.rx_missed))
                             },
                             {
-                                ...args('rgba(155,102,192)'),
+                                ...args('rgba(75,192,192)'),
                                 label: 'RX Mbps',
                                 data: props.report.stats.map(r => r.rx_bits / 1000000)
                             }
@@ -99,12 +99,12 @@ export default (props) => {
                                 data: props.appReport.stats.map(r => r.tx_bits / 1000000)
                             } : {},
                             {
-                                ...args('rgba(75,192,192)'),
+                                ...args('rgba(155,102,192)'),
                                 label: 'TX Mbps',
                                 data: props.report.stats.map(r => r.tx_bits / 1000000)
                             },
                             {
-                                ...args('rgba(155,102,192)'),
+                                ...args('rgba(75,192,192)'),
                                 label: 'TX Mbps (received)',
                                 data: props.report.stats.map(r => r.other_rx_bits / 1000000)
                             }
