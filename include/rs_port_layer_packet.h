@@ -5,15 +5,21 @@
 #include "rs_stat.h"
 
 #define RS_PORT_LAYER_COMMAND_LENGTH 8
+#define RS_PORT_LAYER_PACKET_MAX_PAYLOAD 1350
 
 typedef uint16_t rs_port_layer_seq_t;
+typedef uint8_t rs_port_layer_frag_t;
 
 struct rs_port_layer_packet {
     struct rs_packet super;
 
     rs_port_id_t port;
     uint8_t command;
+
     rs_port_layer_seq_t seq;
+    rs_port_layer_frag_t frag;
+    rs_port_layer_frag_t n_frag;
+
     uint16_t ts; /* LSBs of current unix timestamp in milliseconds */
     struct rs_stats_packed stats;
 
@@ -27,5 +33,11 @@ void rs_port_layer_packet_init(struct rs_port_layer_packet *packet,
                                uint8_t *payload_data, int payload_data_len);
 int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
                                 struct rs_packet *from_packet);
+
+int rs_port_layer_packet_split(struct rs_port_layer_packet *packet,
+                               struct rs_port_layer_packet ***split);
+
+int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
+                              struct rs_port_layer_packet **split, int n_split);
 
 #endif

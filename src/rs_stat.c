@@ -211,7 +211,7 @@ void rs_stats_register_rx(struct rs_stats *stats, int bytes, int missed_packets,
     rs_stat_register(&stats->rx_stat_bits, 8 * bytes);
     rs_stat_register(&stats->rx_stat_packets, 1.0);
     if(missed_packets < 0 || missed_packets > 1000){
-        syslog(LOG_DEBUG, "Unexpected missed_packets reported");
+        syslog(LOG_DEBUG, "Unexpected missed_packets reported: %d", missed_packets);
     }else{
         for (int i = 0; i < missed_packets; i++)
             rs_stat_register(&stats->rx_stat_missed, 1.0);
@@ -260,6 +260,10 @@ int rs_stats_packed_pack(struct rs_stats_packed *packed, uint8_t **buffer,
 
 pack_err:
     return -1;
+}
+
+int rs_stats_packed_len(struct rs_stats_packed* packed){
+    return 4*sizeof(uint16_t);
 }
 
 int rs_stats_packed_unpack(struct rs_stats_packed *unpacked, uint8_t **buffer,

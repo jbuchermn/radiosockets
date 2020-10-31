@@ -74,8 +74,45 @@ void rs_port_layer_destroy(struct rs_port_layer *layer) {
     layer->ports = NULL;
 }
 
-int _transmit(struct rs_port_layer *layer, struct rs_port_layer_packet *packet,
-              struct rs_port *port) {
+static int _transmit_fragmented(struct rs_port_layer *layer,
+                                struct rs_port_layer_packet *packet,
+                                struct rs_port *port,
+                                struct rs_channel_layer *channel_layer) {
+
+    /* Split packet if necessary */
+    struct rs_port_layer_packet **fragments;
+
+    int n_fragments = rs_port_layer_packet_split(packet, &fragments);
+
+    int total_bytes = 0;
+    int bytes;
+    for (int i = 0; i < n_fragments; i++) {
+        if ((bytes =
+                 rs_channel_layer_transmit(channel_layer, &fragments[i]->super,
+                                           port->bound_channel)) > 0) {
+            total_bytes += bytes;
+        } else {
+            total_bytes = -1;
+            goto cleanup;
+        }
+    }
+
+cleanup:
+    for (int i = 0; i < n_fragments; i++) {
+        if (fragments[i] != packet) {
+            rs_packet_destroy(&fragments[i]->super);
+            free(fragments[i]);
+        }
+    }
+
+    free(fragments);
+
+    return total_bytes;
+}
+
+static int _transmit(struct rs_port_layer *layer,
+                     struct rs_port_layer_packet *packet,
+                     struct rs_port *port) {
 
     struct rs_channel_layer *ch =
         rs_server_channel_layer_for_channel(layer->server, port->bound_channel);
@@ -90,8 +127,8 @@ int _transmit(struct rs_port_layer *layer, struct rs_port_layer_packet *packet,
     packet->port = port->id;
     packet->seq = port->tx_last_seq + 1;
     packet->ts = cur_msec();
-    if ((bytes = rs_channel_layer_transmit(ch, &packet->super,
-                                           port->bound_channel)) > 0) {
+
+    if ((bytes = _transmit_fragmented(layer, packet, port, ch)) > 0) {
         port->tx_last_seq++;
         clock_gettime(CLOCK_REALTIME, &port->tx_last_ts);
 
@@ -103,10 +140,6 @@ int _transmit(struct rs_port_layer *layer, struct rs_port_layer_packet *packet,
 
 int rs_port_layer_transmit(struct rs_port_layer *layer,
                            struct rs_packet *send_packet, rs_port_id_t port) {
-
-    if (send_packet->payload_data_len > 1400) {
-        syslog(LOG_ERR, "Packet too large: %d", send_packet->payload_data_len);
-    }
 
     struct rs_port *p = NULL;
     for (int i = 0; i < layer->n_ports; i++) {
@@ -310,15 +343,14 @@ void rs_port_layer_main(struct rs_port_layer *layer,
             for (int i = 0; i < layer->n_ports; i++) {
                 if (layer->ports[i]->id == received->port) {
                     p = layer->ports[i];
-                        break;
+                    break;
                 }
             }
-            printf("REQUESTED: %d\n", received->port);
             if (p) {
-                syslog(LOG_NOTICE, "Switch channel requested: %d",
-                       channel);
-                if(p->cmd_switch_state.state == RS_PORT_CMD_SWITCH_NONE){
-                    rs_port_layer_switch_channel(layer, received->port, channel);
+                syslog(LOG_NOTICE, "Switch channel requested: %d", channel);
+                if (p->cmd_switch_state.state == RS_PORT_CMD_SWITCH_NONE) {
+                    rs_port_layer_switch_channel(layer, received->port,
+                                                 channel);
                 }
             }
         }

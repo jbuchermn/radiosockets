@@ -16,7 +16,6 @@
 #include "rs_server_state.h"
 #include "rs_util.h"
 
-#define MAIN_LOOP_NS 500 /*us*/ * 1000L
 /* #define MAIN_PRINT_STATS */
 /* #define MAIN_PRINT_STATS_N 1000 */
 
@@ -75,7 +74,8 @@ int main(int argc, char **argv) {
 
     /* set up state */
     state.running = 1;
-    rs_stat_init(&state.usage, RS_STAT_AGG_AVG, "usage", "", 1.0);
+    state.usage = 1.;
+    state.main_loop_us = 50000L;
 
     config_init(&state.config);
     if (config_read(&state.config, fopen(conf_file, "r")) != CONFIG_TRUE) {
@@ -194,15 +194,33 @@ int main(int argc, char **argv) {
         struct timespec loop;
         clock_gettime(CLOCK_REALTIME, &loop);
 
-        long int nsec_diff =
+        long long int nsec_diff =
             (loop.tv_sec > loop_begin.tv_sec ? 1000000000L : 0) + loop.tv_nsec -
             loop_begin.tv_nsec;
 
-        rs_stat_register(&state.usage, (double)nsec_diff / ((double)MAIN_LOOP_NS));
+        /* Usage calculation and load controlling */
+        state.usage =
+            (1. - (double)state.main_loop_us / 1000000.) * state.usage +
+            (double)state.main_loop_us / 1000000. *
+                ((double)nsec_diff / ((double)state.main_loop_us * 1000.));
 
-        if (nsec_diff < MAIN_LOOP_NS) {
+        EVERY(adjust_main_loop, 100){
+            if(state.usage > 0.9){
+                if(state.main_loop_us < MAIN_LOOP_US_MAX){
+                    state.main_loop_us *= 1.2;
+                    state.usage /= 1.2;
+                }
+            }else if(state.usage < 0.8){
+                if(state.main_loop_us > MAIN_LOOP_US_MIN){
+                    state.main_loop_us *= 0.95;
+                    state.usage /= 0.95;
+                }
+            }
+        }
+
+        if (nsec_diff < (long long int)state.main_loop_us * 1000) {
             struct timespec sleep = {0};
-            sleep.tv_nsec = MAIN_LOOP_NS - nsec_diff;
+            sleep.tv_nsec = (long long int)state.main_loop_us * 1000 - nsec_diff;
             nanosleep(&sleep, &sleep);
         }
     }

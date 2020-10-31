@@ -52,6 +52,19 @@ inline void timespec_plus_ms(struct timespec* in, double ms){
         (*buffer_len)--; \
     }
 
+#define EVERY(EVNAME, EVMS) \
+    static struct timespec EVERY_ ## EVNAME ## _last; \
+    static int EVERY_ ## EVNAME ## _last_initialized = 0; \
+    if(!EVERY_ ## EVNAME ## _last_initialized){ \
+        clock_gettime(CLOCK_REALTIME, &EVERY_ ## EVNAME ## _last); \
+        EVERY_ ## EVNAME ## _last_initialized = 1; \
+    } \
+    struct timespec EVERY_ ## EVNAME ## _cur; \
+    clock_gettime(CLOCK_REALTIME, &EVERY_ ## EVNAME ## _cur); \
+    int EVERY_ ## EVNAME ## _now = (msec_diff(EVERY_ ## EVNAME ## _cur, EVERY_ ## EVNAME ## _last) > EVMS); \
+    if(EVERY_ ## EVNAME ## _now) EVERY_ ## EVNAME ## _last = EVERY_ ## EVNAME ## _cur; \
+    if(EVERY_ ## EVNAME ## _now)
+
 #ifdef __NO_TIMER__
 
 #define TIMER_START(TNAME) ;

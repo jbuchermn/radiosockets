@@ -12,6 +12,15 @@
 
 static struct rs_packet_vtable vtable;
 
+int rs_channel_layer_packet_len_header(struct rs_packet* super){
+    struct rs_channel_layer_packet *packet = rs_cast(rs_channel_layer_packet, super);
+    return  sizeof(rs_channel_t) + 
+        sizeof(rs_channel_layer_seq_t) +
+        sizeof(uint16_t) +
+        rs_stats_packed_len(&packet->stats) + 
+        sizeof(uint8_t);
+}
+
 void rs_channel_layer_packet_pack_header(struct rs_packet *super,
                                          uint8_t **buffer, int *buffer_len) {
     struct rs_channel_layer_packet *packet =
@@ -70,5 +79,7 @@ unpack_err:
 
 static struct rs_packet_vtable vtable = {
     .destroy = &rs_packet_base_destroy,
+    .len = &rs_packet_base_len,
     .pack = &rs_packet_base_pack,
+    .len_header = &rs_channel_layer_packet_len_header,
     .pack_header = &rs_channel_layer_packet_pack_header};

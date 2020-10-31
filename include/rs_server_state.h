@@ -14,9 +14,14 @@ struct rs_app_layer;
 /* "MAC" adress */
 typedef uint16_t rs_server_id_t;
 
+#define MAIN_LOOP_US_MIN 200
+#define MAIN_LOOP_US_MAX 100000
+
 struct rs_server_state {
     int running;
-    struct rs_stat usage;
+
+    double usage;
+    int main_loop_us;
 
     config_t config;
 

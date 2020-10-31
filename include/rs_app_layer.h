@@ -43,8 +43,10 @@ struct rs_app_connection {
     uint8_t *buffer;
     int buffer_at;
     int buffer_size;
+    int buffer_start_frame;
 
-    struct rs_stat stat;
+    struct rs_stat stat_in;
+    struct rs_stat stat_skipped;
 
     int socket;
     struct sockaddr_in addr_server;

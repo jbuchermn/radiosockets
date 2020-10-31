@@ -122,7 +122,7 @@ class Daemon:
                     'kind': 'port' if s[idx] == "P" else "channel",
                     'stats': {
                         'tx_bits': d[CMD_REPORT_N*idx + 0],
-                        'tx_packet': d[CMD_REPORT_N*idx + 1],
+                        'tx_packets': d[CMD_REPORT_N*idx + 1],
                         'tx_errors': d[CMD_REPORT_N*idx + 2],
                         'rx_bits': d[CMD_REPORT_N*idx + 3],
                         'rx_packets': d[CMD_REPORT_N*idx + 4],
@@ -141,6 +141,7 @@ class Daemon:
                     'kind': 'app',
                     'stats': {
                         'tx_bits': d[CMD_REPORT_N*idx],
+                        'tx_skipped': d[CMD_REPORT_N*idx + 1],
                     }
                 }]
             elif s[idx] == "U":

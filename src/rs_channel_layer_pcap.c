@@ -417,9 +417,9 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
 
     unsigned long long src_mac = layer->super.server->other_id;
     unsigned long long dst_mac = layer->super.server->own_id;
-    for(int i=sizeof(rs_server_id_t); i<6; i++){
-        src_mac += ((unsigned long long)0xAA) << (8*i);
-        dst_mac += ((unsigned long long)0xBB) << (8*i);
+    for (int i = sizeof(rs_server_id_t); i < 6; i++) {
+        src_mac += ((unsigned long long)0xAA) << (8 * i);
+        dst_mac += ((unsigned long long)0xBB) << (8 * i);
     }
 
     switch (pcap_datalink(layer->pcap)) {
@@ -651,10 +651,17 @@ static int _receive(struct rs_channel_layer *super,
             }
         }
 
-        syslog(LOG_DEBUG,
-               "rate: %d MCS: known %02x flags %02x mcs %d Channel: %d flags "
-               "%04x Antenna: %d",
-               rate, mcs_known, mcs_flags, mcs, chan, chan_flags, antenna);
+        syslog(LOG_DEBUG, "MCS: %3d <-> Expected: %3d", mcs,
+               rs_channel_layer_pcap_phys_channel_unpack(
+                   rs_channel_layer_extract(&layer->super, channel))
+                   .mcs);
+
+        /* syslog(LOG_DEBUG, */
+        /*        "rate: %d MCS: known %02x flags %02x mcs %d Channel: %d flags
+         * " */
+        /*        "%04x Antenna: %d", */
+        /*        rate, mcs_known, mcs_flags, mcs, chan, chan_flags, antenna);
+         */
 
         if (flags >= 0 && (((uint8_t)flags) & IEEE80211_RADIOTAP_F_BADFCS)) {
             syslog(LOG_DEBUG, "Received bad FCS packet");

@@ -13,8 +13,8 @@ if __name__ == '__main__':
     if len(sys.argv) > 1 and "fake-pi" in " ".join(sys.argv[1:]):
         is_pi = True
 
-    sleep_s = 1. / 60.
-    kbits = 50000 if is_pi else 100
+    sleep_s = 1. / 120. if is_pi else 1. / 60.
+    kbits = 50000 if is_pi else 1000
     frame_size = int(1000 * kbits / 8 * sleep_s)
 
     if is_pi:
@@ -25,9 +25,11 @@ if __name__ == '__main__':
         arg_other = "0xDD"
     data_addr = ('127.0.0.1', 8885) if is_pi else ('127.0.0.1', 8881)
 
-    daemon = Daemon("./basic.conf", arg_own, arg_other)
-    # daemon = Daemon("./basic.conf", arg_own, arg_other,
-    #                 "valgrind --leak-check=full --track-origins=yes -s")
+    if len(sys.argv) > 1 and "vg" in " ".join(sys.argv[1:]):
+        daemon = Daemon("./basic.conf", arg_own, arg_other,
+                        "valgrind --leak-check=full --track-origins=yes -s")
+    else:
+        daemon = Daemon("./basic.conf", arg_own, arg_other)
     daemon.start()
 
     server = None
@@ -50,7 +52,11 @@ if __name__ == '__main__':
         cnt = 0
         while True:
             try:
+                s = time.time()
                 data_socket.send(data_msg.encode('ascii'))
+                s = time.time() - s
+                if s > 0.001:
+                    print("WARNING: Sending frame took %fms" % (s * 1000))
             except Exception as e:
                 print("Could not send to TCP socket: %s" % e)
                 time.sleep(1)

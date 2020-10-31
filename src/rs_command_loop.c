@@ -47,8 +47,7 @@ static void handle_command(struct rs_message *command,
         int idx = 0;
         answer->payload_char[idx] = 'U';
         answer->payload_int[idx * RS_STATS_PLACE_N] = 0;
-        answer->payload_double[idx] =
-            rs_stat_current(&state->usage); /* TODO hack */
+        answer->payload_double[idx] = state->usage;
         idx++;
 
         for (int i = 0; i < state->app_layer->n_connections; i++) {
@@ -56,7 +55,9 @@ static void handle_command(struct rs_message *command,
             answer->payload_int[idx * RS_STATS_PLACE_N] =
                 state->app_layer->connections[i]->port;
             answer->payload_double[idx * RS_STATS_PLACE_N] =
-                rs_stat_current(&state->app_layer->connections[i]->stat);
+                rs_stat_current(&state->app_layer->connections[i]->stat_in);
+            answer->payload_double[idx * RS_STATS_PLACE_N + 1] =
+                rs_stat_current(&state->app_layer->connections[i]->stat_skipped);
             idx++;
         }
 

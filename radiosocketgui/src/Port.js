@@ -94,9 +94,14 @@ export default (props) => {
                         labels: props.report.stats.map(r => r.t),
                         datasets: [
                             props.appReport ? {
-                                ...args('rgba(155,192,102)'),
+                                ...args('rgba(155,100,100)'),
                                 label: 'TX Mbps (input)',
                                 data: props.appReport.stats.map(r => r.tx_bits / 1000000)
+                            } : {},
+                            props.appReport ? {
+                                ...args('rgba(155,0,0)'),
+                                label: 'TX Mbps (without skipped)',
+                                data: props.appReport.stats.map(r => (1. - r.tx_skipped) * r.tx_bits / 1000000)
                             } : {},
                             {
                                 ...args('rgba(155,102,192)'),

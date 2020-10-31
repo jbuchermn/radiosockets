@@ -76,6 +76,7 @@ struct rs_stats_packed {
 
 void rs_stats_packed_init(struct rs_stats_packed *packed,
                           struct rs_stats *from);
+int rs_stats_packed_len(struct rs_stats_packed* packed);
 int rs_stats_packed_pack(struct rs_stats_packed *packed, uint8_t **buffer,
                          int *buffer_len);
 int rs_stats_packed_unpack(struct rs_stats_packed *unpacked, uint8_t **buffer,

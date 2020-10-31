@@ -28,6 +28,7 @@ class App extends React.Component {
 
     _update(reports) {
         let new_reports = {}
+        console.log(reports);
 
         reports.forEach(r => {
             let unique = r.kind + r.id;

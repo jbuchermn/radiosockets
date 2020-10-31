@@ -35,6 +35,8 @@ struct rs_packet_vtable {
     void (*pack)(struct rs_packet *packet, uint8_t **buffer, int *buffer_len);
     void (*pack_header)(struct rs_packet *packet, uint8_t **buffer,
                         int *buffer_len);
+    int (*len)(struct rs_packet *packet);
+    int (*len_header)(struct rs_packet *packet);
 };
 
 void rs_packet_base_destroy(struct rs_packet *packet);
@@ -42,6 +44,8 @@ void rs_packet_base_pack(struct rs_packet *packet, uint8_t **buffer,
                          int *buffer_len);
 void rs_packet_base_pack_header(struct rs_packet *packet, uint8_t **buffer,
                                 int *buffer_len);
+int rs_packet_base_len(struct rs_packet *packet);
+int rs_packet_base_len_header(struct rs_packet *packet);
 
 static inline void rs_packet_destroy(struct rs_packet *packet) {
     (packet->vtable->destroy)(packet);
@@ -55,6 +59,14 @@ static inline void rs_packet_pack(struct rs_packet *packet, uint8_t **buffer,
 static inline void rs_packet_pack_header(struct rs_packet *packet,
                                          uint8_t **buffer, int *buffer_len) {
     (packet->vtable->pack_header)(packet, buffer, buffer_len);
+}
+
+static inline int rs_packet_len(struct rs_packet *packet) {
+    return (packet->vtable->len)(packet);
+}
+
+static inline int rs_packet_len_header(struct rs_packet *packet) {
+    return (packet->vtable->len_header)(packet);
 }
 
 #endif
