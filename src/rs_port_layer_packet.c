@@ -193,6 +193,7 @@ int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
     /* Infer / read FEC parameters */
     int packet_len = split[0]->super.payload_data_len;
     rs_port_setup_fec(port, split[0]->n_frag_decoded, split[0]->n_frag_encoded);
+    assert(n_split >= port->fec_k);
 
     /* Allocate packet index array */
     unsigned int *block_nums = calloc(port->fec_k, sizeof(unsigned int));
@@ -213,7 +214,7 @@ int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
         if (split[i]->frag >= port->fec_k) {
             int index = -1;
             for (int k = 0; k < port->fec_k; k++) {
-                if (block_nums[k] > port->fec_k) {
+                if (block_nums[k] >= port->fec_m) {
                     index = k;
                     break;
                 }
@@ -226,6 +227,9 @@ int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
             block_nums[index] = split[i]->frag;
         }
     }
+
+    /* TODO */
+    for(int i=0; i<port->fec_k; i++) assert(block_nums[i] < port->fec_m);
 
     /* Decode */
     uint8_t **input = calloc(port->fec_k, sizeof(void *));

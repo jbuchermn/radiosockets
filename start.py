@@ -14,7 +14,7 @@ if __name__ == '__main__':
         is_pi = True
 
     sleep_s = 1. / 120. if is_pi else 1. / 60.
-    kbits = 50000 if is_pi else 1000
+    kbits = 50000 if is_pi else 200
     frame_size = int(1000 * kbits / 8 * sleep_s)
 
     if is_pi:

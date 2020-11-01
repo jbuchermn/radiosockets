@@ -79,11 +79,13 @@ void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
 }
 
 void rs_port_setup_fec(struct rs_port *port, int k, int m) {
-    port->fec_m = m;
-    port->fec_k = k;
-    if (port->fec)
-        fec_free(port->fec);
-    port->fec = fec_new(k, m);
+    if(!port->fec || port->fec_k != k || port->fec_m != m){
+        port->fec_m = m;
+        port->fec_k = k;
+        if (port->fec)
+            fec_free(port->fec);
+        port->fec = fec_new(k, m);
+    }
 }
 
 void rs_port_layer_destroy(struct rs_port_layer *layer) {
@@ -219,8 +221,18 @@ static int _receive_fragmented(struct rs_port_layer *layer,
         }
     }
 
-    port->frag_buffer.fragments[port->frag_buffer.n_frag_received] = fragment;
-    port->frag_buffer.n_frag_received++;
+    int new_fragment = 1;
+    for(int i=0; i<port->frag_buffer.n_frag_received; i++){
+        if(port->frag_buffer.fragments[i]->frag == fragment->frag){
+            new_fragment = 0;
+            break;
+
+        }
+    }
+    if(new_fragment){
+        port->frag_buffer.fragments[port->frag_buffer.n_frag_received] = fragment;
+        port->frag_buffer.n_frag_received++;
+    }
 
     if (port->frag_buffer.n_frag_received == fragment->n_frag_decoded) {
         *packet_ret = calloc(1, sizeof(struct rs_port_layer_packet));

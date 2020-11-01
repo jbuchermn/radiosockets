@@ -216,7 +216,7 @@ void rs_stats_register_rx(struct rs_stats *stats, int bytes, int missed_packets,
     rs_stat_register(&stats->rx_stat_missed, 0.0);
 
     rs_stat_register(&stats->other_tx_stat_bits,
-                     (double)received_stats->tx_bits);
+                     1000 * (double)received_stats->tx_bits);
     rs_stat_register(&stats->other_rx_stat_bits,
                      1000 * (double)received_stats->rx_bits);
     rs_stat_register(&stats->other_rx_stat_missed,
@@ -239,7 +239,7 @@ void rs_stats_printf(struct rs_stats *stats) {
 
 void rs_stats_packed_init(struct rs_stats_packed *packed,
                           struct rs_stats *from) {
-    packed->tx_bits = rs_stat_current(&from->tx_stat_bits);
+    packed->tx_bits = rs_stat_current(&from->tx_stat_bits) / 1000;
     packed->rx_bits = rs_stat_current(&from->rx_stat_bits) / 1000;
     packed->rx_missed = rs_stat_current(&from->rx_stat_missed) * 10000;
 }
