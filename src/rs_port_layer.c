@@ -58,15 +58,33 @@ void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
     new_port->bound_channel = bound_to;
     new_port->tx_last_seq = 0;
     new_port->owner = owner;
+    memset(&new_port->frag_buffer, 0, sizeof(new_port->frag_buffer));
     rs_stats_init(&new_port->stats);
+
+    new_port->fec = NULL;
+    rs_port_setup_fec(new_port, 2, 2);
 
     layer->n_ports++;
     layer->ports = realloc(layer->ports, layer->n_ports * sizeof(void *));
     layer->ports[layer->n_ports - 1] = new_port;
 }
 
+void rs_port_setup_fec(struct rs_port* port, int k, int m){
+    port->fec_m = m;
+    port->fec_k = k;
+    if(port->fec) fec_free(port->fec);
+    port->fec = fec_new(k, m);
+}
+
 void rs_port_layer_destroy(struct rs_port_layer *layer) {
     for (int i = 0; i < layer->n_ports; i++) {
+        fec_free(layer->ports[i]->fec);
+        for (int j = 0; j < layer->ports[i]->frag_buffer.n_frag_received; j++) {
+            rs_packet_destroy(
+                &layer->ports[i]->frag_buffer.fragments[j]->super);
+            free(layer->ports[i]->frag_buffer.fragments[j]);
+        }
+        free(layer->ports[i]->frag_buffer.fragments);
         free(layer->ports[i]);
     }
     free(layer->ports);
@@ -82,7 +100,7 @@ static int _transmit_fragmented(struct rs_port_layer *layer,
     /* Split packet if necessary */
     struct rs_port_layer_packet **fragments;
 
-    int n_fragments = rs_port_layer_packet_split(packet, &fragments);
+    int n_fragments = rs_port_layer_packet_split(packet, port, &fragments);
 
     int total_bytes = 0;
     int bytes;
@@ -163,6 +181,53 @@ int rs_port_layer_transmit(struct rs_port_layer *layer,
     return bytes;
 }
 
+#define RS_PORT_LAYER_INCOMPLETE 2
+
+static int _receive_fragmented(struct rs_port_layer *layer,
+                               struct rs_port_layer_packet *fragment,
+                               struct rs_port *port,
+                               struct rs_port_layer_packet **packet_ret) {
+    if (fragment->n_frag_encoded == 1) {
+        *packet_ret = fragment;
+        return 0;
+    }
+
+    if (fragment->seq != port->frag_buffer.seq) {
+        port->frag_buffer.seq = fragment->seq;
+        port->frag_buffer.n_frag_received = 0;
+        for (int i = 0; i < port->frag_buffer.n_frag; i++) {
+            if (port->frag_buffer.fragments[i]) {
+                rs_packet_destroy(&port->frag_buffer.fragments[i]->super);
+                free(port->frag_buffer.fragments[i]);
+            }
+        }
+        port->frag_buffer.n_frag = fragment->n_frag_encoded;
+        port->frag_buffer.fragments = realloc(
+            port->frag_buffer.fragments, fragment->n_frag_encoded * sizeof(void *));
+        for (int i = 0; i < port->frag_buffer.n_frag; i++) {
+            port->frag_buffer.fragments[i] = NULL;
+        }
+    }
+
+    port->frag_buffer.fragments[port->frag_buffer.n_frag_received] = fragment;
+    port->frag_buffer.n_frag_received++;
+
+    if (port->frag_buffer.n_frag_received == fragment->n_frag_decoded) {
+        *packet_ret = calloc(1, sizeof(struct rs_port_layer_packet));
+
+        int res = rs_port_layer_packet_join(*packet_ret, port,
+                                            port->frag_buffer.fragments,
+                                            port->frag_buffer.n_frag_received);
+        if (res) {
+            free(*packet_ret);
+            *packet_ret = NULL;
+        }
+        return res;
+    }
+
+    return RS_PORT_LAYER_INCOMPLETE;
+}
+
 static int _receive(struct rs_port_layer *layer, struct rs_packet **packet_ret,
                     rs_port_id_t *port_ret, rs_channel_t channel) {
     struct rs_channel_layer *ch =
@@ -173,93 +238,110 @@ static int _receive(struct rs_port_layer *layer, struct rs_packet **packet_ret,
         return -1;
     }
 
+    struct rs_packet *packet = NULL;
+    struct rs_port_layer_packet *unpacked =
+        calloc(1, sizeof(struct rs_port_layer_packet));
+
 retry:
-    for (;;) {
-        struct rs_packet *packet;
-
-        int bytes;
-        struct rs_port_layer_packet unpacked;
-        switch (rs_channel_layer_receive(ch, &packet, &channel)) {
-        case 0:
-            bytes = packet->payload_data_len;
-
-            if (rs_port_layer_packet_unpack(&unpacked, packet)) {
-                /* packed that could not be unpacked */
-                syslog(LOG_ERR, "Could not unpack at port layer");
-                return -1;
-            }
-            /* At this point, packet is invalid, we only have unpacked */
-
-            struct rs_port *port = NULL;
-            for (int i = 0; i < layer->n_ports; i++) {
-                if (layer->ports[i]->id == unpacked.port) {
-                    port = layer->ports[i];
-                }
-            }
-
-            if (!port) {
-                syslog(LOG_ERR, "Received packet on unknown port");
-                goto retry;
-            }
-
-            /*
-             * Handle earlier updates which have been missed (channel switched)
-             */
-            if (port->bound_channel != channel && !port->owner) {
-                syslog(LOG_ERR, "Appears the port has switched channels: %d",
-                       channel);
-                port->bound_channel = channel;
-            }
-
-            /* The same packet is possibly received multiple times */
-            if (unpacked.seq == port->rx_last_seq) {
-                syslog(LOG_DEBUG, "Duplicate packet");
-                rs_packet_destroy(&unpacked.super);
-                goto retry;
-            }
-
-            rs_stats_register_rx(&port->stats, bytes,
-                                 unpacked.seq - port->rx_last_seq - 1,
-                                 &unpacked.stats, unpacked.ts);
-            port->rx_last_seq = unpacked.seq;
-
-            if (unpacked.command) {
-                /* Received a command packet */
-                rs_port_layer_main(layer, &unpacked);
-                rs_packet_destroy(&unpacked.super);
-                goto retry;
-            }
-
-            *packet_ret = calloc(1, sizeof(struct rs_packet));
-            rs_packet_init(*packet_ret, unpacked.super.payload_ownership,
-                           unpacked.super.payload_packet,
-                           unpacked.super.payload_data,
-                           unpacked.super.payload_data_len);
-            *port_ret = unpacked.port;
-
-            rs_packet_destroy(&unpacked.super);
-
-            return 0;
-
-            break;
-        case RS_CHANNEL_LAYER_EOF:
-            /* No more packets */
-            return RS_PORT_LAYER_EOF;
-        case RS_CHANNEL_LAYER_IRR:
-            /* Received a packet we do not care about */
-            goto retry;
-            break;
-        case RS_CHANNEL_LAYER_BADFCS:
-            /* Received a packet with bad fcs */
-            goto retry;
-            break;
-        default:
-            /* Exception */
+    switch (rs_channel_layer_receive(ch, &packet, &channel)) {
+    case 0:
+        if (rs_port_layer_packet_unpack(unpacked, packet)) {
+            /* packed that could not be unpacked */
+            syslog(LOG_ERR, "Could not unpack at port layer");
+            free(packet);
+            free(unpacked);
             return -1;
         }
-    }
+        rs_packet_destroy(packet);
+        free(packet);
+        packet = NULL;
 
-    return 0;
+        struct rs_port *port = NULL;
+        for (int i = 0; i < layer->n_ports; i++) {
+            if (layer->ports[i]->id == unpacked->port) {
+                port = layer->ports[i];
+            }
+        }
+
+        if (!port) {
+            syslog(LOG_ERR, "Received packet on unknown port");
+            goto retry;
+        }
+
+        /*
+         * Handle earlier updates which have been missed (channel switched)
+         */
+        if (port->bound_channel != channel && !port->owner) {
+            syslog(LOG_ERR, "Appears the port has switched channels: %d",
+                   channel);
+            port->bound_channel = channel;
+        }
+
+        if (unpacked->command) {
+            /* Received a command packet */
+            rs_port_layer_main(layer, unpacked);
+            rs_packet_destroy(&unpacked->super);
+            goto retry;
+        }
+
+        struct rs_port_layer_packet *result;
+        int res = _receive_fragmented(layer, unpacked, port, &result);
+        /* unpacked is possibly invalid by now, ownership n any case transferred
+         */
+        unpacked = calloc(1, sizeof(struct rs_port_layer_packet));
+
+        if (!res) {
+            if (result->seq == port->rx_last_seq) {
+                syslog(LOG_DEBUG, "Duplicate packet");
+                rs_packet_destroy(&result->super);
+                free(result);
+
+                goto retry;
+            }
+
+            rs_stats_register_rx(&port->stats, result->payload_len,
+                                 result->seq - port->rx_last_seq - 1,
+                                 &result->stats, result->ts);
+            port->rx_last_seq = result->seq;
+
+            *port_ret = result->port;
+
+            *packet_ret = calloc(1, sizeof(struct rs_packet));
+            rs_packet_init(*packet_ret, result->super.payload_ownership,
+                           result->super.payload_packet,
+                           result->super.payload_data,
+                           result->super.payload_data_len);
+            result->super.payload_ownership = NULL;
+            rs_packet_destroy(&result->super);
+
+            if (result != unpacked) {
+                free(result);
+            }
+
+            free(unpacked);
+            return 0;
+        } else {
+            goto retry;
+        }
+
+        break;
+    case RS_CHANNEL_LAYER_EOF:
+        /* No more packets */
+        free(unpacked);
+        return RS_PORT_LAYER_EOF;
+    case RS_CHANNEL_LAYER_IRR:
+        /* Received a packet we do not care about */
+        goto retry;
+        break;
+    case RS_CHANNEL_LAYER_BADFCS:
+        /* Received a packet with bad fcs */
+        goto retry;
+        break;
+    default:
+        /* Exception */
+        free(unpacked);
+        return -1;
+    }
 }
 
 int rs_port_layer_receive(struct rs_port_layer *layer,
@@ -292,7 +374,6 @@ static void _send_command(struct rs_port_layer *layer, struct rs_port *port,
     memcpy(packet.command_payload, command_payload,
            RS_PORT_LAYER_COMMAND_LENGTH);
     packet.command = command;
-    packet.super.payload_ownership = NULL;
 
     _transmit(layer, &packet, port);
 

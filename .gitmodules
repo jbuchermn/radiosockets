@@ -1,3 +1,6 @@
 [submodule "dependencies/radiotap-library"] 
   path = dependencies/radiotap-library 
   url = https://github.com/radiotap/radiotap-library
+[submodule "dependencies/zfec"]
+	path = dependencies/zfec
+	url = https://github.com/tahoe-lafs/zfec

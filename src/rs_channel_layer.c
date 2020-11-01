@@ -144,6 +144,7 @@ int rs_channel_layer_receive(struct rs_channel_layer *layer,
                    unpacked->super.payload_packet, unpacked->super.payload_data,
                    unpacked->super.payload_data_len);
     *channel = unpacked->channel;
+
     unpacked->super.payload_ownership = NULL;
     rs_packet_destroy(&unpacked->super);
     free(unpacked);

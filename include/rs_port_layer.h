@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <time.h>
+#include "zfec/zfec/fec.h"
 
 #include "rs_channel_layer.h"
 #include "rs_packet.h"
@@ -84,6 +85,17 @@ struct rs_port {
     struct rs_stats stats;
 
     struct {
+        rs_port_layer_seq_t seq;
+        int n_frag;
+        int n_frag_received;
+        struct rs_port_layer_packet** fragments;
+    } frag_buffer;
+
+    unsigned short fec_m;
+    unsigned short fec_k;
+    fec_t* fec;
+
+    struct {
         enum {
             RS_PORT_CMD_SWITCH_NONE,
             RS_PORT_CMD_SWITCH_OWNING,
@@ -96,5 +108,7 @@ struct rs_port {
         rs_channel_t new_channel;
     } cmd_switch_state;
 };
+
+void rs_port_setup_fec(struct rs_port* port, int k, int m);
 
 #endif

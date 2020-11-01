@@ -17,7 +17,6 @@
 #include "rs_util.h"
 
 /* #define MAIN_PRINT_STATS */
-/* #define MAIN_PRINT_STATS_N 1000 */
 
 static struct rs_server_state state;
 
@@ -150,10 +149,6 @@ int main(int argc, char **argv) {
     /* set up command loop */
     rs_command_loop_init(&command_loop, sock_file);
 
-#ifdef MAIN_PRINT_STATS
-    int printf_cnt = 0;
-#endif
-
     /* main loop */
     signal(SIGINT, signal_handler);
     while (state.running) {
@@ -164,10 +159,13 @@ int main(int argc, char **argv) {
         /* Do stuff */
         rs_command_loop_run(&command_loop, &state);
 
-        struct rs_packet *packet;
+        struct rs_packet *packet = NULL;
         rs_port_id_t port;
         while (!rs_port_layer_receive(state.port_layer, &packet, &port)) {
             rs_app_layer_main(state.app_layer, packet, port);
+            rs_packet_destroy(packet);
+            free(packet);
+            packet = NULL;
         }
         for (int i = 0; i < state.n_channel_layers; i++) {
             rs_channel_layer_main(state.channel_layers[i]);
@@ -177,9 +175,9 @@ int main(int argc, char **argv) {
 
 #ifdef MAIN_PRINT_STATS
         /* Print */
-        if (++printf_cnt % MAIN_PRINT_STATS_N == 0) {
+        EVERY(main_printf, 1000) {
             printf("\e[1;1H\e[2J============= PORT =============\n");
-            /* rs_port_layer_stats_printf(state.port_layer); */
+            rs_port_layer_stats_printf(state.port_layer);
             printf("============ CHANNEL ===========\n");
             for (int i = 0; i < state.n_channel_layers; i++) {
                 rs_channel_layer_stats_printf(state.channel_layers[i]);

@@ -15,10 +15,13 @@ struct rs_port_layer_packet {
 
     rs_port_id_t port;
     uint8_t command;
+    uint32_t payload_len;
 
+    /* Relevant for fragmented transmit */
     rs_port_layer_seq_t seq;
-    rs_port_layer_frag_t frag;
-    rs_port_layer_frag_t n_frag;
+    rs_port_layer_frag_t frag; 
+    rs_port_layer_frag_t n_frag_decoded; /* equals FEC k */
+    rs_port_layer_frag_t n_frag_encoded; /* equals FEC m */
 
     uint16_t ts; /* LSBs of current unix timestamp in milliseconds */
     struct rs_stats_packed stats;
@@ -35,9 +38,11 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
                                 struct rs_packet *from_packet);
 
 int rs_port_layer_packet_split(struct rs_port_layer_packet *packet,
+                               struct rs_port *port,
                                struct rs_port_layer_packet ***split);
 
 int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
+                              struct rs_port *port,
                               struct rs_port_layer_packet **split, int n_split);
 
 #endif

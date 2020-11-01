@@ -47,7 +47,7 @@ if __name__ == '__main__':
             print("Could not connect to TCP socket: %s" % e)
 
         print("%dkbps => frame size %db" % (kbits, frame_size))
-        data_msg = "a" * frame_size
+        data_msg = "ab" * int(frame_size / 2)
 
         cnt = 0
         while True:
