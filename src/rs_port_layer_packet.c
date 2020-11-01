@@ -60,8 +60,9 @@ void rs_port_layer_packet_init(struct rs_port_layer_packet *packet,
     packet->frag = 0;
     packet->n_frag_decoded = 1;
     packet->n_frag_encoded = 1;
-    packet->payload_len = payload_data_len;
     memset(packet->command_payload, 0, sizeof(packet->command_payload));
+
+    packet->payload_len = rs_packet_len(&packet->super) - rs_packet_len_header(&packet->super);
 }
 
 int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
@@ -227,9 +228,6 @@ int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
             block_nums[index] = split[i]->frag;
         }
     }
-
-    /* TODO */
-    for(int i=0; i<port->fec_k; i++) assert(block_nums[i] < port->fec_m);
 
     /* Decode */
     uint8_t **input = calloc(port->fec_k, sizeof(void *));

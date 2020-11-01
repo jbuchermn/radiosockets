@@ -153,18 +153,18 @@ static int _transmit(struct rs_port_layer *layer,
     /* Publish stats */
     rs_stats_packed_init(&packet->stats, &port->stats);
 
-    int bytes;
+    int res;
     packet->port = port->id;
     packet->seq = port->tx_last_seq + 1;
 
-    if ((bytes = _transmit_fragmented(layer, packet, port, ch)) > 0) {
+    if ((res = _transmit_fragmented(layer, packet, port, ch)) > 0) {
         port->tx_last_seq++;
         clock_gettime(CLOCK_REALTIME, &port->tx_last_ts);
 
         /* Register stats */
-        rs_stats_register_tx(&port->stats, bytes);
+        rs_stats_register_tx(&port->stats, packet->payload_len);
     }
-    return bytes;
+    return res;
 }
 
 int rs_port_layer_transmit(struct rs_port_layer *layer,
@@ -186,10 +186,10 @@ int rs_port_layer_transmit(struct rs_port_layer *layer,
     struct rs_port_layer_packet packed;
     rs_port_layer_packet_init(&packed, NULL, send_packet, NULL, 0);
 
-    int bytes = _transmit(layer, &packed, p);
+    int res = _transmit(layer, &packed, p);
 
     rs_packet_destroy(&packed.super);
-    return bytes;
+    return res;
 }
 
 #define RS_PORT_LAYER_INCOMPLETE 2
@@ -229,6 +229,7 @@ static int _receive_fragmented(struct rs_port_layer *layer,
 
         }
     }
+
     if(new_fragment){
         port->frag_buffer.fragments[port->frag_buffer.n_frag_received] = fragment;
         port->frag_buffer.n_frag_received++;
