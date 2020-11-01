@@ -159,7 +159,7 @@ static int _transmit(struct rs_port_layer *layer,
     packet->port = port->id;
     packet->seq = port->tx_last_seq + 1;
 
-    if ((res = _transmit_fragmented(layer, packet, port, ch)) > 0) {
+    if ((res = _transmit_fragmented(layer, packet, port, ch)) >= 0) {
         port->tx_last_seq++;
         clock_gettime(CLOCK_REALTIME, &port->tx_last_ts);
 
@@ -302,13 +302,6 @@ retry:
             port->bound_channel = channel;
         }
 
-        if (unpacked->command) {
-            /* Received a command packet */
-            rs_port_layer_main(layer, unpacked);
-            rs_packet_destroy(&unpacked->super);
-            goto retry;
-        }
-
         struct rs_port_layer_packet *result;
         int res = _receive_fragmented(layer, unpacked, port, &result);
         /* unpacked is possibly invalid by now, ownership n any case transferred
@@ -328,6 +321,14 @@ retry:
                                  result->seq - port->rx_last_seq - 1,
                                  &result->stats);
             port->rx_last_seq = result->seq;
+
+            if (result->command) {
+                /* Received a command packet -> dispatch only after registering stats */
+                rs_port_layer_main(layer, result);
+                rs_packet_destroy(&result->super);
+                free(result);
+                goto retry;
+            }
 
             *port_ret = result->port;
 
