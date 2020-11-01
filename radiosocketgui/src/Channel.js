@@ -49,7 +49,7 @@ export default (props) => {
                             {
                                 ...args('rgba(155,102,192)'),
                                 label: 'RX Mbps (sent)',
-                                data: props.report.stats.map(r => r.rx_bits / 1000000 / (1. - r.rx_missed))
+                                data: props.report.stats.map(r => r.other_tx_bits / 1000000)
                             },
                             {
                                 ...args('rgba(75,192,192)'),

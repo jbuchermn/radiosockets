@@ -31,7 +31,8 @@ void rs_port_layer_init(struct rs_port_layer *layer,
                         struct rs_server_state *server);
 
 void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
-                               rs_channel_t bound_to, int owner);
+                               rs_channel_t bound_to, int owner, int fec_k,
+                               int fec_m);
 
 void rs_port_layer_destroy(struct rs_port_layer *layer);
 

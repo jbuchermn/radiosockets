@@ -23,7 +23,6 @@ struct rs_port_layer_packet {
     rs_port_layer_frag_t n_frag_decoded; /* equals FEC k */
     rs_port_layer_frag_t n_frag_encoded; /* equals FEC m */
 
-    uint16_t ts; /* LSBs of current unix timestamp in milliseconds */
     struct rs_stats_packed stats;
 
     /* Only if command != 0 */

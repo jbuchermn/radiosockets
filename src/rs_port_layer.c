@@ -37,13 +37,22 @@ void rs_port_layer_init(struct rs_port_layer *layer,
         sprintf(p, "ports.[%d].owner", i);
         config_lookup_int(&server->config, p, &owner);
 
+        int fec_k = 8;
+        sprintf(p, "ports.[%d].fec_k", i);
+        config_lookup_int(&server->config, p, &fec_k);
+
+        int fec_m = 12;
+        sprintf(p, "ports.[%d].fec_m", i);
+        config_lookup_int(&server->config, p, &fec_m);
+
         rs_port_layer_create_port(layer, id, bound_channel,
-                                  owner == server->own_id);
+                                  owner == server->own_id, fec_k, fec_m);
     }
 }
 
 void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
-                               rs_channel_t bound_to, int owner) {
+                               rs_channel_t bound_to, int owner, int fec_k,
+                               int fec_m) {
     if (port) {
         for (int i = 0; i < layer->n_ports; i++) {
             if (layer->ports[i]->id == port) {
@@ -62,17 +71,18 @@ void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
     rs_stats_init(&new_port->stats);
 
     new_port->fec = NULL;
-    rs_port_setup_fec(new_port, 2, 2);
+    rs_port_setup_fec(new_port, fec_k, fec_m);
 
     layer->n_ports++;
     layer->ports = realloc(layer->ports, layer->n_ports * sizeof(void *));
     layer->ports[layer->n_ports - 1] = new_port;
 }
 
-void rs_port_setup_fec(struct rs_port* port, int k, int m){
+void rs_port_setup_fec(struct rs_port *port, int k, int m) {
     port->fec_m = m;
     port->fec_k = k;
-    if(port->fec) fec_free(port->fec);
+    if (port->fec)
+        fec_free(port->fec);
     port->fec = fec_new(k, m);
 }
 
@@ -144,7 +154,6 @@ static int _transmit(struct rs_port_layer *layer,
     int bytes;
     packet->port = port->id;
     packet->seq = port->tx_last_seq + 1;
-    packet->ts = cur_msec();
 
     if ((bytes = _transmit_fragmented(layer, packet, port, ch)) > 0) {
         port->tx_last_seq++;
@@ -202,8 +211,9 @@ static int _receive_fragmented(struct rs_port_layer *layer,
             }
         }
         port->frag_buffer.n_frag = fragment->n_frag_encoded;
-        port->frag_buffer.fragments = realloc(
-            port->frag_buffer.fragments, fragment->n_frag_encoded * sizeof(void *));
+        port->frag_buffer.fragments =
+            realloc(port->frag_buffer.fragments,
+                    fragment->n_frag_encoded * sizeof(void *));
         for (int i = 0; i < port->frag_buffer.n_frag; i++) {
             port->frag_buffer.fragments[i] = NULL;
         }
@@ -301,7 +311,7 @@ retry:
 
             rs_stats_register_rx(&port->stats, result->payload_len,
                                  result->seq - port->rx_last_seq - 1,
-                                 &result->stats, result->ts);
+                                 &result->stats);
             port->rx_last_seq = result->seq;
 
             *port_ret = result->port;

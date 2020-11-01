@@ -190,14 +190,11 @@ void rs_stats_init(struct rs_stats *stats) {
     rs_stat_init(&stats->rx_stat_packets, RS_STAT_AGG_COUNT, "RX", "pps",
                  1000. / RS_STAT_DT_MSEC);
     rs_stat_init(&stats->rx_stat_missed, RS_STAT_AGG_AVG, "RX miss", "", 1.);
-    rs_stat_init(&stats->rx_stat_dt, RS_STAT_AGG_AVG, "RX dt", "ms", 1.);
 
+    rs_stat_init(&stats->other_tx_stat_bits, RS_STAT_AGG_AVG, "-TX", "bps", 1.);
     rs_stat_init(&stats->other_rx_stat_bits, RS_STAT_AGG_AVG, "-RX", "bps", 1.);
-    rs_stat_init(&stats->other_rx_stat_packets, RS_STAT_AGG_AVG, "-RX", "pps",
-                 1.);
     rs_stat_init(&stats->other_rx_stat_missed, RS_STAT_AGG_AVG, "-RX miss", "",
                  1.);
-    rs_stat_init(&stats->other_rx_stat_dt, RS_STAT_AGG_AVG, "-RX dt", "ms", 1.);
 }
 
 void rs_stats_register_tx(struct rs_stats *stats, int bytes) {
@@ -205,27 +202,25 @@ void rs_stats_register_tx(struct rs_stats *stats, int bytes) {
     rs_stat_register(&stats->tx_stat_packets, 1.0);
 }
 void rs_stats_register_rx(struct rs_stats *stats, int bytes, int missed_packets,
-                          struct rs_stats_packed *received_stats,
-                          uint16_t ts_sent) {
+                          struct rs_stats_packed *received_stats){
 
     rs_stat_register(&stats->rx_stat_bits, 8 * bytes);
     rs_stat_register(&stats->rx_stat_packets, 1.0);
-    if(missed_packets < 0 || missed_packets > 1000){
-        syslog(LOG_DEBUG, "Unexpected missed_packets reported: %d", missed_packets);
-    }else{
+    if (missed_packets < 0 || missed_packets > 1000) {
+        syslog(LOG_DEBUG, "Unexpected missed_packets reported: %d",
+               missed_packets);
+    } else {
         for (int i = 0; i < missed_packets; i++)
             rs_stat_register(&stats->rx_stat_missed, 1.0);
     }
     rs_stat_register(&stats->rx_stat_missed, 0.0);
-    rs_stat_register(&stats->rx_stat_dt, cur_msec() - ts_sent);
 
+    rs_stat_register(&stats->other_tx_stat_bits,
+                     (double)received_stats->tx_bits);
     rs_stat_register(&stats->other_rx_stat_bits,
                      1000 * (double)received_stats->rx_bits);
-    rs_stat_register(&stats->other_rx_stat_packets,
-                     (double)received_stats->rx_packets);
     rs_stat_register(&stats->other_rx_stat_missed,
                      0.0001 * (double)received_stats->rx_missed);
-    rs_stat_register(&stats->other_rx_stat_dt, (double)received_stats->rx_dt);
 }
 
 void rs_stats_printf(struct rs_stats *stats) {
@@ -237,24 +232,23 @@ void rs_stats_printf(struct rs_stats *stats) {
     rs_stat_printf(&stats->tx_stat_errors);
     rs_stat_printf(&stats->rx_stat_missed);
     printf("\n");
+    rs_stat_printf(&stats->other_tx_stat_bits);
     rs_stat_printf(&stats->other_rx_stat_bits);
     rs_stat_printf(&stats->other_rx_stat_missed);
 }
 
 void rs_stats_packed_init(struct rs_stats_packed *packed,
                           struct rs_stats *from) {
+    packed->tx_bits = rs_stat_current(&from->tx_stat_bits);
     packed->rx_bits = rs_stat_current(&from->rx_stat_bits) / 1000;
-    packed->rx_packets = rs_stat_current(&from->rx_stat_packets);
     packed->rx_missed = rs_stat_current(&from->rx_stat_missed) * 10000;
-    packed->rx_dt = rs_stat_current(&from->rx_stat_dt);
 }
 
 int rs_stats_packed_pack(struct rs_stats_packed *packed, uint8_t **buffer,
                          int *buffer_len) {
+    PACK(buffer, buffer_len, uint16_t, packed->tx_bits);
     PACK(buffer, buffer_len, uint16_t, packed->rx_bits);
-    PACK(buffer, buffer_len, uint16_t, packed->rx_packets);
     PACK(buffer, buffer_len, uint16_t, packed->rx_missed);
-    PACK(buffer, buffer_len, uint16_t, packed->rx_dt);
 
     return 0;
 
@@ -262,16 +256,15 @@ pack_err:
     return -1;
 }
 
-int rs_stats_packed_len(struct rs_stats_packed* packed){
-    return 4*sizeof(uint16_t);
+int rs_stats_packed_len(struct rs_stats_packed *packed) {
+    return 3 * sizeof(uint16_t);
 }
 
 int rs_stats_packed_unpack(struct rs_stats_packed *unpacked, uint8_t **buffer,
                            int *buffer_len) {
+    UNPACK(buffer, buffer_len, uint16_t, &unpacked->tx_bits);
     UNPACK(buffer, buffer_len, uint16_t, &unpacked->rx_bits);
-    UNPACK(buffer, buffer_len, uint16_t, &unpacked->rx_packets);
     UNPACK(buffer, buffer_len, uint16_t, &unpacked->rx_missed);
-    UNPACK(buffer, buffer_len, uint16_t, &unpacked->rx_dt);
 
     return 0;
 
@@ -286,9 +279,7 @@ void rs_stats_place(struct rs_stats *stats, double *into) {
     into[3] = rs_stat_current(&stats->rx_stat_bits);
     into[4] = rs_stat_current(&stats->rx_stat_packets);
     into[5] = rs_stat_current(&stats->rx_stat_missed);
-    into[6] = rs_stat_current(&stats->rx_stat_dt);
+    into[6] = rs_stat_current(&stats->other_tx_stat_bits);
     into[7] = rs_stat_current(&stats->other_rx_stat_bits);
-    into[8] = rs_stat_current(&stats->other_rx_stat_packets);
-    into[9] = rs_stat_current(&stats->other_rx_stat_missed);
-    into[10] = rs_stat_current(&stats->other_rx_stat_dt);
+    into[8] = rs_stat_current(&stats->other_rx_stat_missed);
 }

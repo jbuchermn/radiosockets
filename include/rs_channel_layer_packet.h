@@ -10,7 +10,7 @@ struct rs_channel_layer_packet {
 
     rs_channel_t channel;
     rs_channel_layer_seq_t seq;
-    uint16_t ts; /* LSBs of current unix timestamp in milliseconds */
+
     struct rs_stats_packed stats;
 
     /*

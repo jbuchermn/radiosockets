@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -g -O3
 INCLUDES = -Iinclude -Idependencies -I/usr/include/libnl3
 LFLAGS =
-LIBS = -lpcap -lnl-3 -lnl-genl-3 -lconfig -lliquid
+LIBS = -lpcap -lnl-3 -lnl-genl-3 -lconfig -lm
 SRCS_RADIOSOCKETS = src/main.c src/rs_command_loop.c src/rs_channel_layer.c src/rs_channel_layer_pcap.c src/rs_channel_layer_packet.c src/rs_port_layer.c src/rs_port_layer_packet.c src/rs_packet.c src/rs_stat.c src/rs_app_layer.c src/rs_message.c
 SRCS_DEPENDENCIES = dependencies/radiotap-library/radiotap.c dependencies/zfec/zfec/fec.c
 

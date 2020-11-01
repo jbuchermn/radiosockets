@@ -9,7 +9,7 @@ from .rs_message import (
     rs_message_recv, rs_message_send, Message,
     RS_MESSAGE_CMD_EXIT, RS_MESSAGE_CMD_REPORT, RS_MESSAGE_CMD_SWITCH_CHANNEL)
 
-CMD_REPORT_N = 11
+CMD_REPORT_N = 9
 
 def cmd(cmd):
     p = Popen(cmd.split(), stdout=PIPE)
@@ -127,11 +127,9 @@ class Daemon:
                         'rx_bits': d[CMD_REPORT_N*idx + 3],
                         'rx_packets': d[CMD_REPORT_N*idx + 4],
                         'rx_missed': d[CMD_REPORT_N*idx + 5],
-                        'rx_dt': d[CMD_REPORT_N*idx + 6],
+                        'other_tx_bits': d[CMD_REPORT_N*idx + 6],
                         'other_rx_bits': d[CMD_REPORT_N*idx + 7],
-                        'other_rx_packets': d[CMD_REPORT_N*idx + 8],
-                        'other_rx_missed': d[CMD_REPORT_N*idx + 9],
-                        'other_rx_dt': d[CMD_REPORT_N*idx + 10],
+                        'other_rx_missed': d[CMD_REPORT_N*idx + 8],
                     }
                 }]
             elif s[idx] == "A":

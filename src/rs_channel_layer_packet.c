@@ -16,7 +16,6 @@ int rs_channel_layer_packet_len_header(struct rs_packet* super){
     struct rs_channel_layer_packet *packet = rs_cast(rs_channel_layer_packet, super);
     return  sizeof(rs_channel_t) + 
         sizeof(rs_channel_layer_seq_t) +
-        sizeof(uint16_t) +
         rs_stats_packed_len(&packet->stats) + 
         sizeof(uint8_t);
 }
@@ -29,7 +28,6 @@ void rs_channel_layer_packet_pack_header(struct rs_packet *super,
     /* channel */
     PACK(buffer, buffer_len, rs_channel_t, packet->channel);
     PACK(buffer, buffer_len, rs_channel_layer_seq_t, packet->seq);
-    PACK(buffer, buffer_len, uint16_t, packet->ts);
 
     if (rs_stats_packed_pack(&packet->stats, buffer, buffer_len))
         goto pack_err;
@@ -61,8 +59,6 @@ int rs_channel_layer_packet_unpack(struct rs_channel_layer_packet *packet,
            rs_channel_t, &packet->channel);
     UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
            rs_channel_layer_seq_t, &packet->seq);
-    UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
-           uint16_t, &packet->ts);
 
     if (rs_stats_packed_unpack(&packet->stats, &packet->super.payload_data,
                                &packet->super.payload_data_len))

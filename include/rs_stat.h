@@ -38,8 +38,6 @@ void rs_stat_printf(struct rs_stat *stat);
 double rs_stat_current(struct rs_stat *stat);
 
 struct rs_stats {
-    /* Caveat of current implementation: TX bits is including headers, RX bits
-     * is excluding headers */
     struct rs_stat tx_stat_bits;
     struct rs_stat tx_stat_packets;
     struct rs_stat tx_stat_errors;
@@ -47,15 +45,13 @@ struct rs_stats {
     struct rs_stat rx_stat_bits;
     struct rs_stat rx_stat_packets;
     struct rs_stat rx_stat_missed;
-    struct rs_stat rx_stat_dt;
 
+    struct rs_stat other_tx_stat_bits;
     struct rs_stat other_rx_stat_bits;
-    struct rs_stat other_rx_stat_packets;
     struct rs_stat other_rx_stat_missed;
-    struct rs_stat other_rx_stat_dt;
 };
 
-#define RS_STATS_PLACE_N 11
+#define RS_STATS_PLACE_N 9
 void rs_stats_place(struct rs_stats* stats, double* into);
 
 struct rs_stats_packed;
@@ -63,15 +59,13 @@ struct rs_stats_packed;
 void rs_stats_init(struct rs_stats *stats);
 void rs_stats_register_tx(struct rs_stats *stats, int bytes);
 void rs_stats_register_rx(struct rs_stats *stats, int bytes, int missed_packets,
-                          struct rs_stats_packed *received_stats,
-                          uint16_t ts_sent);
+                          struct rs_stats_packed *received_stats);
 void rs_stats_printf(struct rs_stats *stats);
 
 struct rs_stats_packed {
+    uint16_t tx_bits;    /* bitrate in kbps */
     uint16_t rx_bits;    /* bitrate in kbps */
-    uint16_t rx_packets; /* packet rate in pps */
     uint16_t rx_missed;  /* normalized to 10000 */
-    uint16_t rx_dt;      /* milliseconds */
 };
 
 void rs_stats_packed_init(struct rs_stats_packed *packed,

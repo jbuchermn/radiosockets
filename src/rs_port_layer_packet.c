@@ -15,9 +15,8 @@ static struct rs_packet_vtable vtable;
 
 int rs_port_layer_packet_len_header(struct rs_packet *super) {
     struct rs_port_layer_packet *packet = rs_cast(rs_port_layer_packet, super);
-    return sizeof(uint8_t) + sizeof(rs_port_id_t) +
-           sizeof(rs_port_layer_seq_t) + sizeof(uint32_t) +
-           3 * sizeof(rs_port_layer_frag_t) + sizeof(uint16_t) +
+    return sizeof(rs_port_id_t) + sizeof(uint8_t) + sizeof(uint32_t) +
+           sizeof(rs_port_layer_seq_t) + 3 * sizeof(rs_port_layer_frag_t) +
            rs_stats_packed_len(&packet->stats) +
            (packet->command != 0
                 ? RS_PORT_LAYER_COMMAND_LENGTH * sizeof(uint8_t)
@@ -35,7 +34,6 @@ void rs_port_layer_packet_pack_header(struct rs_packet *super, uint8_t **buffer,
     PACK(buffer, buffer_len, rs_port_layer_frag_t, packet->frag);
     PACK(buffer, buffer_len, rs_port_layer_frag_t, packet->n_frag_decoded);
     PACK(buffer, buffer_len, rs_port_layer_frag_t, packet->n_frag_encoded);
-    PACK(buffer, buffer_len, uint16_t, packet->ts);
 
     if (rs_stats_packed_pack(&packet->stats, buffer, buffer_len))
         goto pack_err;
@@ -88,8 +86,6 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
            rs_port_layer_frag_t, &packet->n_frag_decoded);
     UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
            rs_port_layer_frag_t, &packet->n_frag_encoded);
-    UNPACK(&packet->super.payload_data, &packet->super.payload_data_len,
-           uint16_t, &packet->ts);
 
     if (rs_stats_packed_unpack(&packet->stats, &packet->super.payload_data,
                                &packet->super.payload_data_len))
@@ -176,7 +172,6 @@ int rs_port_layer_packet_split(struct rs_port_layer_packet *packet,
         (*split)[j]->frag = j;
         (*split)[j]->n_frag_decoded = port->fec_k;
         (*split)[j]->n_frag_encoded = port->fec_m;
-        (*split)[j]->ts = packet->ts;
         (*split)[j]->stats = packet->stats;
         memcpy((*split)[j]->command_payload, packet->command_payload,
                RS_PORT_LAYER_COMMAND_LENGTH);
@@ -259,17 +254,14 @@ int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
     free(output_buf);
     free(block_nums);
 
-
     /* Setup returned packet */
-    rs_port_layer_packet_init(joined, buf, NULL, buf,
-                              split[0]->payload_len);
+    rs_port_layer_packet_init(joined, buf, NULL, buf, split[0]->payload_len);
     joined->command = split[0]->command;
     joined->port = split[0]->port;
     joined->seq = split[0]->seq;
     joined->frag = 0;
     joined->n_frag_decoded = 1;
     joined->n_frag_encoded = 1;
-    joined->ts = split[0]->ts;
     joined->stats = split[0]->stats;
     memcpy(joined->command_payload, split[0]->command_payload,
            RS_PORT_LAYER_COMMAND_LENGTH);

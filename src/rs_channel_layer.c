@@ -68,7 +68,6 @@ static int _transmit(struct rs_channel_layer *layer,
 
     packet->channel = info->id;
     packet->seq = info->tx_last_seq + 1;
-    packet->ts = cur_msec();
     int res = layer->vtable->_transmit(layer, &packet->super, info->id);
     if (res > 0) {
         info->tx_last_seq++;
@@ -122,7 +121,7 @@ int rs_channel_layer_receive(struct rs_channel_layer *layer,
     info->is_in_use = 1;
     rs_stats_register_rx(&info->stats, unpacked->super.payload_data_len,
                          unpacked->seq - info->rx_last_seq - 1,
-                         &unpacked->stats, unpacked->ts);
+                         &unpacked->stats);
     info->rx_last_seq = unpacked->seq;
 
 
