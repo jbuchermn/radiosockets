@@ -73,6 +73,8 @@ void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
     new_port->fec = NULL;
     rs_port_setup_fec(new_port, fec_k, fec_m);
 
+    clock_gettime(CLOCK_REALTIME, &new_port->tx_last_ts);
+
     layer->n_ports++;
     layer->ports = realloc(layer->ports, layer->n_ports * sizeof(void *));
     layer->ports[layer->n_ports - 1] = new_port;
