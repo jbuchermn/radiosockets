@@ -63,7 +63,7 @@ void rs_port_layer_stats_printf(struct rs_port_layer *layer);
 int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
                                  rs_channel_t new_channel);
 
-#define RS_PORT_CMD_DUMMY_SIZE 1
+#define RS_PORT_CMD_DUMMY_SIZE 10
 #define RS_PORT_CMD_SWITCH_CHANNEL 0xCC
 #define RS_PORT_CMD_REQUEST_SWITCH_CHANNEL 0xC0
 #define RS_PORT_CMD_SWITCH_N_BROADCAST 10

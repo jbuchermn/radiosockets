@@ -29,7 +29,8 @@ const opts = {
         yAxes: [{
             ticks: {
                 beginAtZero: 0,
-                suggestedMin: 0.5
+                suggestedMin: 0.5,
+                suggestedMax: 0.5
             }
         }]
     }
