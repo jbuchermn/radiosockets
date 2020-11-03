@@ -7,13 +7,8 @@ from subprocess import Popen, PIPE
 from .pcap_conf import pcap_conf_compile
 from .rs_message import (
     rs_message_recv, rs_message_send, Message,
-    RS_MESSAGE_CMD_EXIT, RS_MESSAGE_CMD_REPORT, RS_MESSAGE_CMD_SWITCH_CHANNEL)
-
-CMD_REPORT_N = 9
-
-def cmd(cmd):
-    p = Popen(cmd.split(), stdout=PIPE)
-    return p.communicate()[0].decode()
+    RS_MESSAGE_CMD_EXIT, RS_MESSAGE_CMD_REPORT, RS_MESSAGE_CMD_SWITCH_CHANNEL,
+    RS_MESSAGE_CMD_UPDATE_PORT, RS_MESSAGE_CMD_REPORT_N)
 
 
 class Daemon:
@@ -48,7 +43,9 @@ class Daemon:
             with open(self.conf, "w") as outf:
                 outf.write(conf)
 
-        for l in cmd("ps ax").split("\n"):
+        ps_ax = Popen(["ps", "ax"], stdout=PIPE)
+        ps_ax = ps_ax.communicate()[0].decode()
+        for l in ps_ax.split("\n"):
             if './radiosocketd' in l:
                 pid = int(l.split(None, 1)[0])
                 print("Found zombie process: %d" % pid)
@@ -116,47 +113,52 @@ class Daemon:
         while idx < len(s):
             if s[idx] in "PC":
                 res += [{
-                    'title': '%s%d' % (s[idx], n[CMD_REPORT_N*idx]),
-                    'id': n[CMD_REPORT_N*idx],
-                    'bound': n[CMD_REPORT_N*idx + 1],
+                    'title': '%s%d' % (s[idx], n[RS_MESSAGE_CMD_REPORT_N*idx]),
+                    'id': n[RS_MESSAGE_CMD_REPORT_N*idx],
+                    'bound': n[RS_MESSAGE_CMD_REPORT_N*idx + 1],
                     'kind': 'port' if s[idx] == "P" else "channel",
                     'stats': {
-                        'tx_bits': d[CMD_REPORT_N*idx + 0],
-                        'tx_packets': d[CMD_REPORT_N*idx + 1],
-                        'tx_errors': d[CMD_REPORT_N*idx + 2],
-                        'rx_bits': d[CMD_REPORT_N*idx + 3],
-                        'rx_packets': d[CMD_REPORT_N*idx + 4],
-                        'rx_missed': d[CMD_REPORT_N*idx + 5],
-                        'other_tx_bits': d[CMD_REPORT_N*idx + 6],
-                        'other_rx_bits': d[CMD_REPORT_N*idx + 7],
-                        'other_rx_missed': d[CMD_REPORT_N*idx + 8],
+                        'tx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 0],
+                        'tx_packets': d[RS_MESSAGE_CMD_REPORT_N*idx + 1],
+                        'tx_errors': d[RS_MESSAGE_CMD_REPORT_N*idx + 2],
+                        'rx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 3],
+                        'rx_packets': d[RS_MESSAGE_CMD_REPORT_N*idx + 4],
+                        'rx_missed': d[RS_MESSAGE_CMD_REPORT_N*idx + 5],
+                        'other_tx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 6],
+                        'other_rx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 7],
+                        'other_rx_missed': d[RS_MESSAGE_CMD_REPORT_N*idx + 8],
                     }
                 }]
             elif s[idx] == "A":
                 res += [{
-                    'title': '%s%d' % (s[idx], n[CMD_REPORT_N*idx]),
-                    'id': n[CMD_REPORT_N*idx],
+                    'title': '%s%d' % (s[idx], n[RS_MESSAGE_CMD_REPORT_N*idx]),
+                    'id': n[RS_MESSAGE_CMD_REPORT_N*idx],
                     'kind': 'app',
                     'stats': {
-                        'tx_bits': d[CMD_REPORT_N*idx],
-                        'tx_skipped': d[CMD_REPORT_N*idx + 1],
+                        'tx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx],
+                        'tx_skipped': d[RS_MESSAGE_CMD_REPORT_N*idx + 1],
                     }
                 }]
             elif s[idx] == "U":
                 res += [{
                     'title': 'Status',
-                    'id': n[CMD_REPORT_N*idx],
+                    'id': n[RS_MESSAGE_CMD_REPORT_N*idx],
                     'kind': 'status',
                     'stats': {
-                        'usage': d[CMD_REPORT_N*idx],
+                        'usage': d[RS_MESSAGE_CMD_REPORT_N*idx],
                     }
                 }]
 
-            idx+=1
+            idx += 1
         return res
 
     def cmd_switch_channel(self, port, new_channel):
         msg = self._cmd(RS_MESSAGE_CMD_SWITCH_CHANNEL, [port, new_channel])
+        return msg.cmd if msg is not None else -1
+
+    def cmd_update_port(self, port, max_packet_size, fec_k, fec_m):
+        msg = self._cmd(RS_MESSAGE_CMD_UPDATE_PORT, [
+                        port, max_packet_size, fec_k, fec_m])
         return msg.cmd if msg is not None else -1
 
     def cmd_close(self):

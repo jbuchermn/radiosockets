@@ -5,7 +5,6 @@
 #include "rs_stat.h"
 
 #define RS_PORT_LAYER_COMMAND_LENGTH 8
-#define RS_PORT_LAYER_PACKET_MAX_PAYLOAD 1350
 
 typedef uint16_t rs_port_layer_seq_t;
 typedef uint8_t rs_port_layer_frag_t;

@@ -4,7 +4,10 @@
 #include <stdint.h>
 
 #define RS_MESSAGE_CMD_REPORT 1
+#define RS_MESSAGE_CMD_REPORT_N 9
+
 #define RS_MESSAGE_CMD_SWITCH_CHANNEL 2
+#define RS_MESSAGE_CMD_UPDATE_PORT 3
 #define RS_MESSAGE_CMD_EXIT 13
 
 struct rs_message {

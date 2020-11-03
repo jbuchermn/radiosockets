@@ -62,7 +62,8 @@ void rs_port_layer_packet_init(struct rs_port_layer_packet *packet,
     packet->n_frag_encoded = 1;
     memset(packet->command_payload, 0, sizeof(packet->command_payload));
 
-    packet->payload_len = rs_packet_len(&packet->super) - rs_packet_len_header(&packet->super);
+    packet->payload_len =
+        rs_packet_len(&packet->super) - rs_packet_len_header(&packet->super);
 }
 
 int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
@@ -116,14 +117,33 @@ int rs_port_layer_packet_split(struct rs_port_layer_packet *packet,
     int len_header = rs_packet_len_header(&packet->super);
     int len = rs_packet_len(&packet->super) - len_header;
 
-    if (len <= RS_PORT_LAYER_PACKET_MAX_PAYLOAD) {
+    if (len <= port->max_packet_size) {
         *split = calloc(1, sizeof(void *));
         **split = packet;
         return 1;
     }
 
-    /* TODO: Adjust fec */
-    assert(port->fec_k * RS_PORT_LAYER_PACKET_MAX_PAYLOAD >= len);
+    /* Possibly adjust FEC */
+    if ((port->fec_k * port->max_packet_size < len) ||
+        (len / port->fec_k) < 0.1 * port->max_packet_size) {
+
+        int new_k = ceil((double)len / (double)port->max_packet_size);
+        int new_m = round((double)port->fec_m / (double)port->fec_k * new_k);
+
+        if (new_m > 255) {
+            new_k = 255;
+            new_m = 255;
+            syslog(LOG_ERR,
+                   "port %d: max_packet_size to small or app layer frame_size "
+                   "to big\n",
+                   port->id);
+        }
+
+        syslog(LOG_NOTICE, "port %d: adjusting FEC to k=%d / m=%d", port->id,
+               new_k, new_m);
+        rs_port_setup_fec(port, port->max_packet_size, new_k, new_m);
+    }
+
     int packet_len = ceil((double)len / (double)port->fec_k);
 
     /* Pack into buf with primary block 0 starting at buf + len_header also
@@ -193,7 +213,8 @@ int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
 
     /* Infer / read FEC parameters */
     int packet_len = split[0]->super.payload_data_len;
-    rs_port_setup_fec(port, split[0]->n_frag_decoded, split[0]->n_frag_encoded);
+    rs_port_setup_fec(port, port->max_packet_size, split[0]->n_frag_decoded,
+                      split[0]->n_frag_encoded);
     assert(n_split >= port->fec_k);
 
     /* Allocate packet index array */

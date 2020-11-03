@@ -34,8 +34,8 @@ static void handle_command(struct rs_message *command,
         }
 
         answer->header.len_payload_char = n_reports;
-        answer->header.len_payload_int = RS_STATS_PLACE_N * n_reports;
-        answer->header.len_payload_double = RS_STATS_PLACE_N * n_reports;
+        answer->header.len_payload_int = RS_MESSAGE_CMD_REPORT_N * n_reports;
+        answer->header.len_payload_double = RS_MESSAGE_CMD_REPORT_N * n_reports;
 
         answer->payload_char =
             calloc(answer->header.len_payload_char, sizeof(char));
@@ -46,30 +46,32 @@ static void handle_command(struct rs_message *command,
 
         int idx = 0;
         answer->payload_char[idx] = 'U';
-        answer->payload_int[idx * RS_STATS_PLACE_N] = 0;
+        answer->payload_int[idx * RS_MESSAGE_CMD_REPORT_N] = 0;
         answer->payload_double[idx] = state->usage;
         idx++;
 
         for (int i = 0; i < state->app_layer->n_connections; i++) {
             answer->payload_char[idx] = 'A';
-            answer->payload_int[idx * RS_STATS_PLACE_N] =
+            answer->payload_int[idx * RS_MESSAGE_CMD_REPORT_N] =
                 state->app_layer->connections[i]->port;
-            answer->payload_double[idx * RS_STATS_PLACE_N] =
+            answer->payload_double[idx * RS_MESSAGE_CMD_REPORT_N] =
                 rs_stat_current(&state->app_layer->connections[i]->stat_in);
-            answer->payload_double[idx * RS_STATS_PLACE_N + 1] =
-                rs_stat_current(&state->app_layer->connections[i]->stat_skipped);
+            answer->payload_double[idx * RS_MESSAGE_CMD_REPORT_N + 1] =
+                rs_stat_current(
+                    &state->app_layer->connections[i]->stat_skipped);
             idx++;
         }
 
         for (int i = 0; i < state->port_layer->n_ports; i++) {
             answer->payload_char[idx] = 'P';
-            answer->payload_int[idx * RS_STATS_PLACE_N] =
+            answer->payload_int[idx * RS_MESSAGE_CMD_REPORT_N] =
                 state->port_layer->ports[i]->id;
-            answer->payload_int[idx * RS_STATS_PLACE_N + 1] =
+            answer->payload_int[idx * RS_MESSAGE_CMD_REPORT_N + 1] =
                 state->port_layer->ports[i]->bound_channel;
 
             rs_stats_place(&state->port_layer->ports[i]->stats,
-                           answer->payload_double + (idx * RS_STATS_PLACE_N));
+                           answer->payload_double +
+                               (idx * RS_MESSAGE_CMD_REPORT_N));
             idx++;
         }
 
@@ -78,12 +80,13 @@ static void handle_command(struct rs_message *command,
                  ch < rs_channel_layer_ch_n(state->channel_layers[c]); ch++) {
                 if (state->channel_layers[c]->channels[ch].is_in_use) {
                     answer->payload_char[idx] = 'C';
-                    answer->payload_int[idx * RS_STATS_PLACE_N] =
+                    answer->payload_int[idx * RS_MESSAGE_CMD_REPORT_N] =
                         state->channel_layers[c]->channels[ch].id;
 
                     rs_stats_place(
                         &state->channel_layers[c]->channels[ch].stats,
-                        answer->payload_double + (idx * RS_STATS_PLACE_N));
+                        answer->payload_double +
+                            (idx * RS_MESSAGE_CMD_REPORT_N));
 
                     idx++;
                 }
@@ -98,6 +101,15 @@ static void handle_command(struct rs_message *command,
 
         answer->header.cmd =
             rs_port_layer_switch_channel(state->port_layer, port, new_channel);
+
+    } else if (command->header.cmd == RS_MESSAGE_CMD_UPDATE_PORT) {
+        rs_port_id_t port = (rs_port_id_t)command->payload_int[0];
+        int max_packet_size = command->payload_int[1];
+        int fec_k = command->payload_int[2];
+        int fec_m = command->payload_int[3];
+
+        answer->header.cmd = rs_port_layer_update_port(
+            state->port_layer, port, max_packet_size, fec_k, fec_m);
     }
 }
 

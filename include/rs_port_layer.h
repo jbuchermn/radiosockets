@@ -1,9 +1,9 @@
 #ifndef RS_PORT_LAYER_H
 #define RS_PORT_LAYER_H
 
+#include "zfec/zfec/fec.h"
 #include <stdint.h>
 #include <time.h>
-#include "zfec/zfec/fec.h"
 
 #include "rs_channel_layer.h"
 #include "rs_packet.h"
@@ -31,8 +31,8 @@ void rs_port_layer_init(struct rs_port_layer *layer,
                         struct rs_server_state *server);
 
 void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
-                               rs_channel_t bound_to, int owner, int fec_k,
-                               int fec_m);
+                               rs_channel_t bound_to, int owner,
+                               int max_packet_size, int fec_k, int fec_m);
 
 void rs_port_layer_destroy(struct rs_port_layer *layer);
 
@@ -62,8 +62,11 @@ void rs_port_layer_stats_printf(struct rs_port_layer *layer);
 
 int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
                                  rs_channel_t new_channel);
+int rs_port_layer_update_port(struct rs_port_layer *layer, rs_port_id_t port,
+                              int max_packet_size, int fec_k, int fec_m);
 
 #define RS_PORT_CMD_DUMMY_SIZE 10
+
 #define RS_PORT_CMD_SWITCH_CHANNEL 0xCC
 #define RS_PORT_CMD_REQUEST_SWITCH_CHANNEL 0xC0
 #define RS_PORT_CMD_SWITCH_N_BROADCAST 10
@@ -89,12 +92,14 @@ struct rs_port {
         rs_port_layer_seq_t seq;
         int n_frag;
         int n_frag_received;
-        struct rs_port_layer_packet** fragments;
+        struct rs_port_layer_packet **fragments;
     } frag_buffer;
 
+    int max_packet_size;
     unsigned short fec_m;
     unsigned short fec_k;
-    fec_t* fec;
+
+    fec_t *fec;
 
     struct {
         enum {
@@ -110,6 +115,6 @@ struct rs_port {
     } cmd_switch_state;
 };
 
-void rs_port_setup_fec(struct rs_port* port, int k, int m);
+void rs_port_setup_fec(struct rs_port *port, int max_packet_size, int k, int m);
 
 #endif

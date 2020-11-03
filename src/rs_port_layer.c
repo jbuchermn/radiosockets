@@ -37,6 +37,10 @@ void rs_port_layer_init(struct rs_port_layer *layer,
         sprintf(p, "ports.[%d].owner", i);
         config_lookup_int(&server->config, p, &owner);
 
+        int max_packet_size = 1024;
+        sprintf(p, "ports.[%d].max_packet_size", i);
+        config_lookup_int(&server->config, p, &max_packet_size);
+
         int fec_k = 8;
         sprintf(p, "ports.[%d].fec_k", i);
         config_lookup_int(&server->config, p, &fec_k);
@@ -46,13 +50,14 @@ void rs_port_layer_init(struct rs_port_layer *layer,
         config_lookup_int(&server->config, p, &fec_m);
 
         rs_port_layer_create_port(layer, id, bound_channel,
-                                  owner == server->own_id, fec_k, fec_m);
+                                  owner == server->own_id, max_packet_size,
+                                  fec_k, fec_m);
     }
 }
 
 void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
-                               rs_channel_t bound_to, int owner, int fec_k,
-                               int fec_m) {
+                               rs_channel_t bound_to, int owner,
+                               int max_packet_size, int fec_k, int fec_m) {
     if (port) {
         for (int i = 0; i < layer->n_ports; i++) {
             if (layer->ports[i]->id == port) {
@@ -71,7 +76,7 @@ void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
     rs_stats_init(&new_port->stats);
 
     new_port->fec = NULL;
-    rs_port_setup_fec(new_port, fec_k, fec_m);
+    rs_port_setup_fec(new_port, max_packet_size, fec_k, fec_m);
 
     clock_gettime(CLOCK_REALTIME, &new_port->tx_last_ts);
 
@@ -80,8 +85,10 @@ void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
     layer->ports[layer->n_ports - 1] = new_port;
 }
 
-void rs_port_setup_fec(struct rs_port *port, int k, int m) {
-    if(!port->fec || port->fec_k != k || port->fec_m != m){
+void rs_port_setup_fec(struct rs_port *port, int max_packet_size, int k,
+                       int m) {
+    port->max_packet_size = max_packet_size;
+    if (!port->fec || port->fec_k != k || port->fec_m != m) {
         port->fec_m = m;
         port->fec_k = k;
         if (port->fec)
@@ -224,16 +231,16 @@ static int _receive_fragmented(struct rs_port_layer *layer,
     }
 
     int new_fragment = 1;
-    for(int i=0; i<port->frag_buffer.n_frag_received; i++){
-        if(port->frag_buffer.fragments[i]->frag == fragment->frag){
+    for (int i = 0; i < port->frag_buffer.n_frag_received; i++) {
+        if (port->frag_buffer.fragments[i]->frag == fragment->frag) {
             new_fragment = 0;
             break;
-
         }
     }
 
-    if(new_fragment){
-        port->frag_buffer.fragments[port->frag_buffer.n_frag_received] = fragment;
+    if (new_fragment) {
+        port->frag_buffer.fragments[port->frag_buffer.n_frag_received] =
+            fragment;
         port->frag_buffer.n_frag_received++;
     }
 
@@ -323,7 +330,8 @@ retry:
             port->rx_last_seq = result->seq;
 
             if (result->command) {
-                /* Received a command packet -> dispatch only after registering stats */
+                /* Received a command packet -> dispatch only after registering
+                 * stats */
                 rs_port_layer_main(layer, result);
                 rs_packet_destroy(&result->super);
                 free(result);
@@ -573,6 +581,27 @@ int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
     } else {
         p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_REQUESTING;
     }
+
+    return 0;
+}
+
+int rs_port_layer_update_port(struct rs_port_layer *layer, rs_port_id_t port,
+                              int max_packet_size, int fec_k, int fec_m){
+    struct rs_port *p = NULL;
+    for (int i = 0; i < layer->n_ports; i++) {
+        if (layer->ports[i]->id == port) {
+            p = layer->ports[i];
+            break;
+        }
+    }
+    if (!p) {
+        syslog(LOG_ERR, "Unknown port");
+        return -1;
+    }
+
+    if(!p->owner) return -1;
+
+    rs_port_setup_fec(p, max_packet_size, fec_k, fec_m);
 
     return 0;
 }

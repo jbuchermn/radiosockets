@@ -2,28 +2,28 @@ import os
 import sys
 import time
 import socket
-from pyradiosockets.daemon import Daemon
+from pyradiosockets import Daemon
 from radiosocketgui.webserver import Webserver
 
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.realpath(__file__)))
     os.system('make')
 
-    is_pi = 'pi' in os.uname()[1]
+    is_up = 'up' in os.uname()[1]
     if len(sys.argv) > 1 and "fake-pi" in " ".join(sys.argv[1:]):
-        is_pi = True
+        is_up = True
 
-    sleep_s = 1. / 120. if is_pi else 1. / 60.
-    kbits = 50000 if is_pi else 200
+    sleep_s = 1. / 30. if is_up else 1. / 100.
+    kbits = 2400 if is_up else 80
     frame_size = int(1000 * kbits / 8 * sleep_s)
 
-    if is_pi:
+    if is_up:
         arg_own = "0xDD"
         arg_other = "0xAA"
     else:
         arg_own = "0xAA"
         arg_other = "0xDD"
-    data_addr = ('127.0.0.1', 8885) if is_pi else ('127.0.0.1', 8881)
+    data_addr = ('127.0.0.1', 8885) if is_up else ('127.0.0.1', 8881)
 
     if len(sys.argv) > 1 and "vg" in " ".join(sys.argv[1:]):
         daemon = Daemon("./basic.conf", arg_own, arg_other,
