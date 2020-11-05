@@ -2,7 +2,9 @@ import os
 import socket
 import ctypes
 import signal
-from subprocess import Popen, PIPE
+import time
+import asyncio
+import subprocess
 
 from .pcap_conf import pcap_conf_compile
 from .rs_message import (
@@ -23,10 +25,9 @@ class Daemon:
         self.socket = "/tmp/radiosocketd_%d.sock" % os.getpid()
         self.conf = "/tmp/radiosocketd_%d.conf" % os.getpid()
 
-        self.daemon = None
         self._cmd_id = 0
 
-    def start(self):
+    def setup(self):
         args = pcap_conf_compile()
         args['<own/>'] = self.own_id
         args['<other/>'] = self.other_id
@@ -43,7 +44,7 @@ class Daemon:
             with open(self.conf, "w") as outf:
                 outf.write(conf)
 
-        ps_ax = Popen(["ps", "ax"], stdout=PIPE)
+        ps_ax = subprocess.Popen(["ps", "ax"], stdout=subprocess.PIPE)
         ps_ax = ps_ax.communicate()[0].decode()
         for l in ps_ax.split("\n"):
             if './radiosocketd' in l:
@@ -51,14 +52,6 @@ class Daemon:
                 print("Found zombie process: %d" % pid)
                 if input("Kill? [Y/n] ").strip() not in ["n", "N"]:
                     os.kill(pid, signal.SIGINT)
-
-        input("Confirm? ")
-        self.daemon = Popen(("sudo %s ./radiosocketd -v -c %s -s %s" %
-                             (self.debug, self.conf, self.socket)).split())
-
-    def close(self):
-        self.cmd_close()
-        self.daemon.communicate()
 
     def _cmd(self, cmd, payload_int=[], payload_char="", payload_double=[]):
         self._cmd_id += 1
@@ -80,7 +73,7 @@ class Daemon:
             else:
                 return answer
         except Exception as e:
-            print("ERROR: %s" % e)
+            print("[debug] connect: %s" % e)
         finally:
             s.close()
 
@@ -104,6 +97,8 @@ class Daemon:
         if msg is None:
             return []
 
+        t = time.time() * 1000
+
         n = msg.payload_int
         s = msg.payload_char
         d = msg.payload_double
@@ -113,38 +108,43 @@ class Daemon:
         while idx < len(s):
             if s[idx] in "PC":
                 res += [{
-                    'title': '%s%d' % (s[idx], n[RS_MESSAGE_CMD_REPORT_N*idx]),
+                    'key': '%s%d' % (s[idx], n[RS_MESSAGE_CMD_REPORT_N*idx]),
                     'id': n[RS_MESSAGE_CMD_REPORT_N*idx],
                     'bound': n[RS_MESSAGE_CMD_REPORT_N*idx + 1],
                     'kind': 'port' if s[idx] == "P" else "channel",
                     'stats': {
+                        't': t,
                         'tx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 0],
-                        'tx_packets': d[RS_MESSAGE_CMD_REPORT_N*idx + 1],
+                        'tx_bits_packet_size': d[RS_MESSAGE_CMD_REPORT_N*idx + 1],
                         'tx_errors': d[RS_MESSAGE_CMD_REPORT_N*idx + 2],
                         'rx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 3],
-                        'rx_packets': d[RS_MESSAGE_CMD_REPORT_N*idx + 4],
+                        'rx_bits_packet_size': d[RS_MESSAGE_CMD_REPORT_N*idx + 4],
                         'rx_missed': d[RS_MESSAGE_CMD_REPORT_N*idx + 5],
                         'other_tx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 6],
                         'other_rx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 7],
                         'other_rx_missed': d[RS_MESSAGE_CMD_REPORT_N*idx + 8],
+                        'tx_fec_factor': d[RS_MESSAGE_CMD_REPORT_N*idx + 9],
+                        'rx_fec_factor': d[RS_MESSAGE_CMD_REPORT_N*idx + 10],
                     }
                 }]
             elif s[idx] == "A":
                 res += [{
-                    'title': '%s%d' % (s[idx], n[RS_MESSAGE_CMD_REPORT_N*idx]),
+                    'key': '%s%d' % (s[idx], n[RS_MESSAGE_CMD_REPORT_N*idx]),
                     'id': n[RS_MESSAGE_CMD_REPORT_N*idx],
                     'kind': 'app',
                     'stats': {
+                        't': t,
                         'tx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx],
                         'tx_skipped': d[RS_MESSAGE_CMD_REPORT_N*idx + 1],
                     }
                 }]
             elif s[idx] == "U":
                 res += [{
-                    'title': 'Status',
+                    'key': 'Status',
                     'id': n[RS_MESSAGE_CMD_REPORT_N*idx],
                     'kind': 'status',
                     'stats': {
+                        't': t,
                         'usage': d[RS_MESSAGE_CMD_REPORT_N*idx],
                     }
                 }]
@@ -163,3 +163,13 @@ class Daemon:
 
     def cmd_close(self):
         self._cmd(RS_MESSAGE_CMD_EXIT)
+
+    async def run(self):
+        proc = await asyncio.create_subprocess_shell(
+            "sudo %s ./radiosocketd -v -c %s -s %s" %
+            (self.debug, self.conf, self.socket))
+        await proc.communicate()
+
+
+    def close(self):
+        self.cmd_close()

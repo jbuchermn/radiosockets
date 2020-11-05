@@ -42,7 +42,7 @@ export default (props) => {
             <div className="Stat-container">
                 <div className="Stat-container-row">
                     <Line data={{
-                        labels: props.report.stats.map(r => r.t),
+                        labels: props.report.stats.map((_, i) => i),
                         datasets: [
                             {
                                 ...args,

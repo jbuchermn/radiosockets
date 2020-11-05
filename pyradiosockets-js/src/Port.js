@@ -37,15 +37,35 @@ const opts = {
 }
 
 
-
 export default (props) => {
     return (
         <div className="Port">
-            <h1>{props.report.title}</h1>
+            <h1>{props.report.key}</h1>
+            <h2>bound to channel C{props.report.bound}</h2>
+                <h2>FEC factor TX: {Math.round(props.report.stats[props.report.stats.length - 1].tx_fec_factor * 100)/100.} / RX {Math.round(props.report.stats[props.report.stats.length - 1].rx_fec_factor*100)/100} </h2>
+                <h2>Packet size TX: {Math.round(props.report.stats[props.report.stats.length - 1].tx_bits_packet_size / 8)}b / RX {Math.round(props.report.stats[props.report.stats.length - 1].rx_bits_packet_size / 8)}b </h2>
+            <div className="Port-control">
+                <div className="Port-control-btn" onClick={() => props.switchChannel(
+                    props.report.id, props.report.bound - 12)}>
+                    --
+                </div>
+                <div className="Port-control-btn" onClick={() => props.switchChannel(
+                    props.report.id, props.report.bound - 1)}>
+                    -
+                </div>
+                <div className="Port-control-btn" onClick={() => props.switchChannel(
+                    props.report.id, props.report.bound + 1)}>
+                    +
+                </div>
+                <div className="Port-control-btn" onClick={() => props.switchChannel(
+                    props.report.id, props.report.bound + 12)}>
+                    ++
+                </div>
+            </div>
             <div className="Stat-container">
                 <div className="Stat-container-row">
                     <Line data={{
-                        labels: props.report.stats.map(r => r.t),
+                        labels: props.report.stats.map((_, i) => i),
                         datasets: [
                             {
                                 ...args('rgba(155,102,192)'),
@@ -62,8 +82,18 @@ export default (props) => {
                 </div>
                 <div className="Stat-container-row">
                     <Line data={{
-                        labels: props.report.stats.map(r => r.t),
+                        labels: props.report.stats.map((_, i) => i),
                         datasets: [
+                            props.appReport ? {
+                                ...args('rgba(155,100,100)'),
+                                label: 'TX Mbps (input)',
+                                data: props.appReport.stats.map(r => r.tx_bits / 1000000)
+                            } : null,
+                            props.appReport ? {
+                                ...args('rgba(155,0,0)'),
+                                label: 'TX Mbps (without skipped)',
+                                data: props.appReport.stats.map(r => (1. - r.tx_skipped) * r.tx_bits / 1000000)
+                            } : null,
                             {
                                 ...args('rgba(155,102,192)'),
                                 label: 'TX Mbps',

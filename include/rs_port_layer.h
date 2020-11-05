@@ -87,6 +87,8 @@ struct rs_port {
     rs_channel_t bound_channel;
 
     struct rs_stats stats;
+    struct rs_stat tx_stats_fec_factor;
+    struct rs_stat rx_stats_fec_factor;
 
     struct {
         rs_port_layer_seq_t seq;
@@ -95,11 +97,14 @@ struct rs_port {
         struct rs_port_layer_packet **fragments;
     } frag_buffer;
 
-    int max_packet_size;
-    unsigned short fec_m;
-    unsigned short fec_k;
+    int tx_max_packet_size;
+    unsigned short tx_fec_m;
+    unsigned short tx_fec_k;
+    fec_t *tx_fec;
 
-    fec_t *fec;
+    unsigned short rx_fec_m;
+    unsigned short rx_fec_k;
+    fec_t *rx_fec;
 
     struct {
         enum {
@@ -115,6 +120,7 @@ struct rs_port {
     } cmd_switch_state;
 };
 
-void rs_port_setup_fec(struct rs_port *port, int max_packet_size, int k, int m);
+void rs_port_setup_tx_fec(struct rs_port *port, int max_packet_size, int k, int m);
+void rs_port_setup_rx_fec(struct rs_port *port, int k, int m);
 
 #endif

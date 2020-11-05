@@ -39,11 +39,11 @@ double rs_stat_current(struct rs_stat *stat);
 
 struct rs_stats {
     struct rs_stat tx_stat_bits;
-    struct rs_stat tx_stat_packets;
+    struct rs_stat tx_stat_bits_packet_size;
     struct rs_stat tx_stat_errors;
 
     struct rs_stat rx_stat_bits;
-    struct rs_stat rx_stat_packets;
+    struct rs_stat rx_stat_bits_packet_size;
     struct rs_stat rx_stat_missed;
 
     struct rs_stat other_tx_stat_bits;

@@ -117,39 +117,45 @@ int rs_port_layer_packet_split(struct rs_port_layer_packet *packet,
     int len_header = rs_packet_len_header(&packet->super);
     int len = rs_packet_len(&packet->super) - len_header;
 
-    if (len <= port->max_packet_size) {
+    /* TODO!
+     * Should this logic really be here? 
+     */
+    if (len <= port->tx_max_packet_size) {
         *split = calloc(1, sizeof(void *));
         **split = packet;
         return 1;
     }
 
-    /* Possibly adjust FEC */
-    if ((port->fec_k * port->max_packet_size < len) ||
-        (len / port->fec_k) < 0.1 * port->max_packet_size) {
 
-        int new_k = ceil((double)len / (double)port->max_packet_size);
-        int new_m = round((double)port->fec_m / (double)port->fec_k * new_k);
+    /* TODO!
+     * Should this logic really be here? 
+     */
+    if ((port->tx_fec_k * port->tx_max_packet_size < len) ||
+        (len / port->tx_fec_k) < 0.1 * port->tx_max_packet_size) {
+
+        int new_k = ceil((double)len / (double)port->tx_max_packet_size);
+        int new_m = round((double)port->tx_fec_m / (double)port->tx_fec_k * new_k);
 
         if (new_m > 255) {
             new_k = 255;
             new_m = 255;
             syslog(LOG_ERR,
                    "port %d: max_packet_size to small or app layer frame_size "
-                   "to big\n",
+                   "too big\n",
                    port->id);
         }
 
         syslog(LOG_NOTICE, "port %d: adjusting FEC to k=%d / m=%d", port->id,
                new_k, new_m);
-        rs_port_setup_fec(port, port->max_packet_size, new_k, new_m);
+        rs_port_setup_tx_fec(port, port->tx_max_packet_size, new_k, new_m);
     }
 
-    int packet_len = ceil((double)len / (double)port->fec_k);
+    int packet_len = ceil((double)len / (double)port->tx_fec_k);
 
     /* Pack into buf with primary block 0 starting at buf + len_header also
      * allocating memory for secondary blocks starting at buf + len_header +
      * k*packet_len */
-    int buf_len = len_header + packet_len * port->fec_m;
+    int buf_len = len_header + packet_len * port->tx_fec_m;
     uint8_t *buf = calloc(buf_len, sizeof(uint8_t));
 
     uint8_t *b = buf;
@@ -157,30 +163,30 @@ int rs_port_layer_packet_split(struct rs_port_layer_packet *packet,
     rs_packet_pack(&packet->super, &b, &bl);
 
     /* Encode secondary blocks */
-    uint8_t **primary_blocks = calloc(port->fec_k, sizeof(void *));
+    uint8_t **primary_blocks = calloc(port->tx_fec_k, sizeof(void *));
     uint8_t **secondary_blocks =
-        calloc(port->fec_m - port->fec_k, sizeof(void *));
+        calloc(port->tx_fec_m - port->tx_fec_k, sizeof(void *));
     unsigned int *block_nums =
-        calloc(port->fec_m - port->fec_k, sizeof(unsigned int));
+        calloc(port->tx_fec_m - port->tx_fec_k, sizeof(unsigned int));
 
-    for (int i = 0; i < port->fec_k; i++) {
+    for (int i = 0; i < port->tx_fec_k; i++) {
         primary_blocks[i] = buf + len_header + packet_len * i;
     }
-    for (int i = port->fec_k, j = 0; i < port->fec_m; i++, j++) {
+    for (int i = port->tx_fec_k, j = 0; i < port->tx_fec_m; i++, j++) {
         secondary_blocks[j] = buf + len_header + packet_len * i;
         block_nums[j] = i;
     }
-    fec_encode(port->fec, (const uint8_t **)primary_blocks, secondary_blocks,
-               block_nums, port->fec_m - port->fec_k, packet_len);
+    fec_encode(port->tx_fec, (const uint8_t **)primary_blocks, secondary_blocks,
+               block_nums, port->tx_fec_m - port->tx_fec_k, packet_len);
     free(primary_blocks);
     free(secondary_blocks);
     free(block_nums);
 
     /* Allocate packet array */
-    *split = calloc(port->fec_m, sizeof(void *));
+    *split = calloc(port->tx_fec_m, sizeof(void *));
 
     /* Fill packet array */
-    for (int j = 0; j < port->fec_m; j++) {
+    for (int j = 0; j < port->tx_fec_m; j++) {
         (*split)[j] = calloc(1, sizeof(struct rs_port_layer_packet));
         rs_port_layer_packet_init((*split)[j], j == 0 ? buf : NULL, NULL,
                                   buf + len_header + (packet_len * j),
@@ -191,14 +197,14 @@ int rs_port_layer_packet_split(struct rs_port_layer_packet *packet,
         (*split)[j]->payload_len = len;
         (*split)[j]->seq = packet->seq;
         (*split)[j]->frag = j;
-        (*split)[j]->n_frag_decoded = port->fec_k;
-        (*split)[j]->n_frag_encoded = port->fec_m;
+        (*split)[j]->n_frag_decoded = port->tx_fec_k;
+        (*split)[j]->n_frag_encoded = port->tx_fec_m;
         (*split)[j]->stats = packet->stats;
         memcpy((*split)[j]->command_payload, packet->command_payload,
                RS_PORT_LAYER_COMMAND_LENGTH);
     }
 
-    return port->fec_m;
+    return port->tx_fec_m;
 }
 
 int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
@@ -213,35 +219,35 @@ int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
 
     /* Infer / read FEC parameters */
     int packet_len = split[0]->super.payload_data_len;
-    rs_port_setup_fec(port, port->max_packet_size, split[0]->n_frag_decoded,
+    rs_port_setup_rx_fec(port, split[0]->n_frag_decoded,
                       split[0]->n_frag_encoded);
-    assert(n_split >= port->fec_k);
+    assert(n_split >= port->rx_fec_k);
 
     /* Allocate packet index array */
-    unsigned int *block_nums = calloc(port->fec_k, sizeof(unsigned int));
-    for (int i = 0; i < port->fec_k; i++)
-        block_nums[i] = port->fec_m + 1;
+    unsigned int *block_nums = calloc(port->rx_fec_k, sizeof(unsigned int));
+    for (int i = 0; i < port->rx_fec_k; i++)
+        block_nums[i] = port->rx_fec_m + 1;
 
     /* Allocate output buffer and place received primary and secondary packets
      * inside */
-    uint8_t *buf = calloc(packet_len * port->fec_k, sizeof(uint8_t));
+    uint8_t *buf = calloc(packet_len * port->rx_fec_k, sizeof(uint8_t));
     for (int i = 0; i < n_split; i++) {
-        if (split[i]->frag < port->fec_k) {
+        if (split[i]->frag < port->rx_fec_k) {
             memcpy(buf + split[i]->frag * packet_len,
                    split[i]->super.payload_data, packet_len);
             block_nums[split[i]->frag] = split[i]->frag;
         }
     }
     for (int i = 0; i < n_split; i++) {
-        if (split[i]->frag >= port->fec_k) {
+        if (split[i]->frag >= port->rx_fec_k) {
             int index = -1;
-            for (int k = 0; k < port->fec_k; k++) {
-                if (block_nums[k] >= port->fec_m) {
+            for (int k = 0; k < port->rx_fec_k; k++) {
+                if (block_nums[k] >= port->rx_fec_m) {
                     index = k;
                     break;
                 }
             }
-            if (index >= port->fec_k)
+            if (index >= port->rx_fec_k)
                 break;
 
             memcpy(buf + index * packet_len, split[i]->super.payload_data,
@@ -251,24 +257,24 @@ int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
     }
 
     /* Decode */
-    uint8_t **input = calloc(port->fec_k, sizeof(void *));
+    uint8_t **input = calloc(port->rx_fec_k, sizeof(void *));
 
-    uint8_t *output_buf = calloc(port->fec_k * packet_len, sizeof(uint8_t));
-    uint8_t **output = calloc(port->fec_k, sizeof(void *));
+    uint8_t *output_buf = calloc(port->rx_fec_k * packet_len, sizeof(uint8_t));
+    uint8_t **output = calloc(port->rx_fec_k, sizeof(void *));
 
-    for (int i = 0; i < port->fec_k; i++)
+    for (int i = 0; i < port->rx_fec_k; i++)
         input[i] = buf + i * packet_len;
-    for (int i = 0; i < port->fec_k; i++)
+    for (int i = 0; i < port->rx_fec_k; i++)
         output[i] = output_buf + i * packet_len;
 
-    fec_decode(port->fec, (const uint8_t **)input, output, block_nums,
+    fec_decode(port->rx_fec, (const uint8_t **)input, output, block_nums,
                packet_len);
     free(output);
     free(input);
 
     /* Write output back to buf */
-    for (int i = 0, j = 0; i < port->fec_k; i++) {
-        if (block_nums[i] >= port->fec_k) {
+    for (int i = 0, j = 0; i < port->rx_fec_k; i++) {
+        if (block_nums[i] >= port->rx_fec_k) {
             memcpy(buf + i * packet_len, output_buf + j * packet_len,
                    packet_len * sizeof(uint8_t));
             j++;

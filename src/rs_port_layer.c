@@ -74,9 +74,15 @@ void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
     new_port->owner = owner;
     memset(&new_port->frag_buffer, 0, sizeof(new_port->frag_buffer));
     rs_stats_init(&new_port->stats);
+    rs_stat_init(&new_port->tx_stats_fec_factor, RS_STAT_AGG_AVG, "TX FEC", "",
+                 1.);
+    rs_stat_init(&new_port->rx_stats_fec_factor, RS_STAT_AGG_AVG, "RX FEC", "",
+                 1.);
 
-    new_port->fec = NULL;
-    rs_port_setup_fec(new_port, max_packet_size, fec_k, fec_m);
+    new_port->tx_fec = NULL;
+    new_port->rx_fec = NULL;
+    rs_port_setup_tx_fec(new_port, max_packet_size, fec_k, fec_m);
+    rs_port_setup_rx_fec(new_port, fec_k, fec_m);
 
     clock_gettime(CLOCK_REALTIME, &new_port->tx_last_ts);
 
@@ -85,21 +91,31 @@ void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
     layer->ports[layer->n_ports - 1] = new_port;
 }
 
-void rs_port_setup_fec(struct rs_port *port, int max_packet_size, int k,
-                       int m) {
-    port->max_packet_size = max_packet_size;
-    if (!port->fec || port->fec_k != k || port->fec_m != m) {
-        port->fec_m = m;
-        port->fec_k = k;
-        if (port->fec)
-            fec_free(port->fec);
-        port->fec = fec_new(k, m);
+void rs_port_setup_tx_fec(struct rs_port *port, int max_packet_size, int k,
+                          int m) {
+    port->tx_max_packet_size = max_packet_size;
+    if (!port->tx_fec || port->tx_fec_k != k || port->tx_fec_m != m) {
+        port->tx_fec_m = m;
+        port->tx_fec_k = k;
+        if (port->tx_fec)
+            fec_free(port->tx_fec);
+        port->tx_fec = fec_new(k, m);
+    }
+}
+void rs_port_setup_rx_fec(struct rs_port *port, int k, int m) {
+    if (!port->rx_fec || port->rx_fec_k != k || port->rx_fec_m != m) {
+        port->rx_fec_m = m;
+        port->rx_fec_k = k;
+        if (port->rx_fec)
+            fec_free(port->rx_fec);
+        port->rx_fec = fec_new(k, m);
     }
 }
 
 void rs_port_layer_destroy(struct rs_port_layer *layer) {
     for (int i = 0; i < layer->n_ports; i++) {
-        fec_free(layer->ports[i]->fec);
+        fec_free(layer->ports[i]->tx_fec);
+        fec_free(layer->ports[i]->rx_fec);
         for (int j = 0; j < layer->ports[i]->frag_buffer.n_frag_received; j++) {
             rs_packet_destroy(
                 &layer->ports[i]->frag_buffer.fragments[j]->super);
@@ -122,6 +138,9 @@ static int _transmit_fragmented(struct rs_port_layer *layer,
     struct rs_port_layer_packet **fragments;
 
     int n_fragments = rs_port_layer_packet_split(packet, port, &fragments);
+    rs_stat_register(&port->tx_stats_fec_factor,
+                     (double)fragments[0]->n_frag_encoded /
+                         (double)fragments[0]->n_frag_decoded);
 
     int total_bytes = 0;
     int bytes;
@@ -247,6 +266,10 @@ static int _receive_fragmented(struct rs_port_layer *layer,
     if (port->frag_buffer.n_frag_received == fragment->n_frag_decoded) {
         *packet_ret = calloc(1, sizeof(struct rs_port_layer_packet));
 
+        rs_stat_register(
+            &port->rx_stats_fec_factor,
+            (double)port->frag_buffer.fragments[0]->n_frag_encoded /
+                (double)port->frag_buffer.fragments[0]->n_frag_decoded);
         int res = rs_port_layer_packet_join(*packet_ret, port,
                                             port->frag_buffer.fragments,
                                             port->frag_buffer.n_frag_received);
@@ -586,7 +609,13 @@ int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
 }
 
 int rs_port_layer_update_port(struct rs_port_layer *layer, rs_port_id_t port,
-                              int max_packet_size, int fec_k, int fec_m){
+                              int max_packet_size, int fec_k, int fec_m) {
+    /* TODO!
+     * These are two independent parameters to be configured - should be improved
+     * Also FEC is only active for packets below max_packet_size
+     *  * small data packets should have FEC (be sent twice e.g.) nonetheless
+     *  * heartbeats should not... 
+     */
     struct rs_port *p = NULL;
     for (int i = 0; i < layer->n_ports; i++) {
         if (layer->ports[i]->id == port) {
@@ -599,9 +628,10 @@ int rs_port_layer_update_port(struct rs_port_layer *layer, rs_port_id_t port,
         return -1;
     }
 
-    if(!p->owner) return -1;
+    if (!p->owner)
+        return -1;
 
-    rs_port_setup_fec(p, max_packet_size, fec_k, fec_m);
+    rs_port_setup_tx_fec(p, max_packet_size, fec_k, fec_m);
 
     return 0;
 }

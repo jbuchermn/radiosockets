@@ -72,6 +72,15 @@ static void handle_command(struct rs_message *command,
             rs_stats_place(&state->port_layer->ports[i]->stats,
                            answer->payload_double +
                                (idx * RS_MESSAGE_CMD_REPORT_N));
+
+            answer->payload_double[idx * RS_MESSAGE_CMD_REPORT_N +
+                                   RS_STATS_PLACE_N] =
+                rs_stat_current(
+                    &state->port_layer->ports[i]->tx_stats_fec_factor);
+            answer->payload_double[idx * RS_MESSAGE_CMD_REPORT_N +
+                                   RS_STATS_PLACE_N + 1] =
+                rs_stat_current(
+                    &state->port_layer->ports[i]->rx_stats_fec_factor);
             idx++;
         }
 

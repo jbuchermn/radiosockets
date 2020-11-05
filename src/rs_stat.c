@@ -180,15 +180,15 @@ double rs_stat_current(struct rs_stat *stat) {
 void rs_stats_init(struct rs_stats *stats) {
     rs_stat_init(&stats->tx_stat_bits, RS_STAT_AGG_SUM, "TX", "bps",
                  1000. / RS_STAT_DT_MSEC);
-    rs_stat_init(&stats->tx_stat_packets, RS_STAT_AGG_COUNT, "TX", "pps",
-                 1000. / RS_STAT_DT_MSEC);
+    rs_stat_init(&stats->tx_stat_bits_packet_size, RS_STAT_AGG_AVG, "TX", "bpp",
+                 1.);
     rs_stat_init(&stats->tx_stat_errors, RS_STAT_AGG_COUNT, "TX", "eps",
                  1000. / RS_STAT_DT_MSEC);
 
     rs_stat_init(&stats->rx_stat_bits, RS_STAT_AGG_SUM, "RX", "bps",
                  1000. / RS_STAT_DT_MSEC);
-    rs_stat_init(&stats->rx_stat_packets, RS_STAT_AGG_COUNT, "RX", "pps",
-                 1000. / RS_STAT_DT_MSEC);
+    rs_stat_init(&stats->tx_stat_bits_packet_size, RS_STAT_AGG_AVG, "RX", "bpp",
+                 1.);
     rs_stat_init(&stats->rx_stat_missed, RS_STAT_AGG_AVG, "RX miss", "", 1.);
 
     rs_stat_init(&stats->other_tx_stat_bits, RS_STAT_AGG_AVG, "-TX", "bps", 1.);
@@ -199,13 +199,13 @@ void rs_stats_init(struct rs_stats *stats) {
 
 void rs_stats_register_tx(struct rs_stats *stats, int bytes) {
     rs_stat_register(&stats->tx_stat_bits, 8 * bytes);
-    rs_stat_register(&stats->tx_stat_packets, 1.0);
+    rs_stat_register(&stats->tx_stat_bits_packet_size, 8 * bytes);
 }
 void rs_stats_register_rx(struct rs_stats *stats, int bytes, int missed_packets,
                           struct rs_stats_packed *received_stats){
 
     rs_stat_register(&stats->rx_stat_bits, 8 * bytes);
-    rs_stat_register(&stats->rx_stat_packets, 1.0);
+    rs_stat_register(&stats->rx_stat_bits_packet_size, 8 * bytes);
     if (missed_packets < 0 || missed_packets > 1000) {
         syslog(LOG_DEBUG, "Unexpected missed_packets reported: %d",
                missed_packets);
@@ -227,8 +227,8 @@ void rs_stats_printf(struct rs_stats *stats) {
     rs_stat_printf(&stats->tx_stat_bits);
     rs_stat_printf(&stats->rx_stat_bits);
     printf("\n");
-    rs_stat_printf(&stats->tx_stat_packets);
-    rs_stat_printf(&stats->rx_stat_packets);
+    rs_stat_printf(&stats->tx_stat_bits_packet_size);
+    rs_stat_printf(&stats->rx_stat_bits_packet_size);
     rs_stat_printf(&stats->tx_stat_errors);
     rs_stat_printf(&stats->rx_stat_missed);
     printf("\n");
@@ -274,10 +274,10 @@ unpack_err:
 
 void rs_stats_place(struct rs_stats *stats, double *into) {
     into[0] = rs_stat_current(&stats->tx_stat_bits);
-    into[1] = rs_stat_current(&stats->tx_stat_packets);
+    into[1] = rs_stat_current(&stats->tx_stat_bits_packet_size);
     into[2] = rs_stat_current(&stats->tx_stat_errors);
     into[3] = rs_stat_current(&stats->rx_stat_bits);
-    into[4] = rs_stat_current(&stats->rx_stat_packets);
+    into[4] = rs_stat_current(&stats->rx_stat_bits_packet_size);
     into[5] = rs_stat_current(&stats->rx_stat_missed);
     into[6] = rs_stat_current(&stats->other_tx_stat_bits);
     into[7] = rs_stat_current(&stats->other_rx_stat_bits);
