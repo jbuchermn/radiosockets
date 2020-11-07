@@ -66,6 +66,11 @@ export default (props) => {
                         labels: props.report.stats.map((_, i) => i),
                         datasets: [
                             {
+                                ...args('rgba(155,155,155)'),
+                                label: 'TX Mbps (estimated bw)',
+                                data: props.report.stats.map(r => r.tx_bits / r.tx_dt / 1000000)
+                            },
+                            {
                                 ...args('rgba(155,102,192)'),
                                 label: 'TX Mbps',
                                 data: props.report.stats.map(r => r.tx_bits / 1000000)

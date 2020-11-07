@@ -11,7 +11,7 @@
 
 #define RS_PORT_LAYER_EOF 1
 
-typedef uint16_t rs_port_id_t;
+typedef uint8_t rs_port_id_t;
 
 typedef uint16_t rs_port_layer_seq_t;
 

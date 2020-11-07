@@ -106,12 +106,12 @@ class Daemon:
 
         idx = 0
         while idx < len(s):
-            if s[idx] in "PC":
+            if s[idx] == "P":
                 res += [{
-                    'key': '%s%d' % (s[idx], n[RS_MESSAGE_CMD_REPORT_N*idx]),
+                    'key': 'P%d' % n[RS_MESSAGE_CMD_REPORT_N*idx],
                     'id': n[RS_MESSAGE_CMD_REPORT_N*idx],
                     'bound': n[RS_MESSAGE_CMD_REPORT_N*idx + 1],
-                    'kind': 'port' if s[idx] == "P" else "channel",
+                    'kind': 'port',
                     'stats': {
                         't': t,
                         'tx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 0],
@@ -125,6 +125,25 @@ class Daemon:
                         'other_rx_missed': d[RS_MESSAGE_CMD_REPORT_N*idx + 8],
                         'tx_fec_factor': d[RS_MESSAGE_CMD_REPORT_N*idx + 9],
                         'rx_fec_factor': d[RS_MESSAGE_CMD_REPORT_N*idx + 10],
+                    }
+                }]
+            elif s[idx] == "C":
+                res += [{
+                    'key': 'C%d' % n[RS_MESSAGE_CMD_REPORT_N*idx],
+                    'id': n[RS_MESSAGE_CMD_REPORT_N*idx],
+                    'kind': "channel",
+                    'stats': {
+                        't': t,
+                        'tx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 0],
+                        'tx_bits_packet_size': d[RS_MESSAGE_CMD_REPORT_N*idx + 1],
+                        'tx_errors': d[RS_MESSAGE_CMD_REPORT_N*idx + 2],
+                        'rx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 3],
+                        'rx_bits_packet_size': d[RS_MESSAGE_CMD_REPORT_N*idx + 4],
+                        'rx_missed': d[RS_MESSAGE_CMD_REPORT_N*idx + 5],
+                        'other_tx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 6],
+                        'other_rx_bits': d[RS_MESSAGE_CMD_REPORT_N*idx + 7],
+                        'other_rx_missed': d[RS_MESSAGE_CMD_REPORT_N*idx + 8],
+                        'tx_dt': d[RS_MESSAGE_CMD_REPORT_N*idx + 9],
                     }
                 }]
             elif s[idx] == "A":

@@ -7,9 +7,8 @@
 #include "rs_util.h"
 
 void rs_channel_layer_init(struct rs_channel_layer *layer,
-                           struct rs_server_state *server,
-                           uint8_t ch_base,
-                           struct rs_channel_layer_vtable* vtable) {
+                           struct rs_server_state *server, uint8_t ch_base,
+                           struct rs_channel_layer_vtable *vtable) {
     layer->vtable = vtable;
     layer->server = server;
     layer->ch_base = ch_base;
@@ -20,9 +19,11 @@ void rs_channel_layer_init(struct rs_channel_layer *layer,
         layer->channels[i].is_in_use = 0;
         layer->channels[i].tx_last_seq = 0;
         rs_stats_init(&layer->channels[i].stats);
+        rs_stat_init(&layer->channels[i].tx_stat_dt, RS_STAT_AGG_SUM, "TX",
+                     "s", 1.);
     }
 }
-void rs_channel_layer_base_destroy(struct rs_channel_layer* layer){
+void rs_channel_layer_base_destroy(struct rs_channel_layer *layer) {
     free(layer->channels);
     layer->channels = NULL;
 }
@@ -68,14 +69,22 @@ static int _transmit(struct rs_channel_layer *layer,
 
     packet->channel = info->id;
     packet->seq = info->tx_last_seq + 1;
+
+    struct timespec before_tx;
+    clock_gettime(CLOCK_REALTIME, &before_tx);
     int res = layer->vtable->_transmit(layer, &packet->super, info->id);
     if (res > 0) {
         info->tx_last_seq++;
         clock_gettime(CLOCK_REALTIME, &info->tx_last_ts);
 
+        uint64_t nsec =
+            1000000000LL * (info->tx_last_ts.tv_sec - before_tx.tv_sec) +
+            (info->tx_last_ts.tv_nsec - before_tx.tv_nsec);
+        rs_stat_register(&info->tx_stat_dt, nsec / 1000000000.0);
+
         /* Register stats */
         rs_stats_register_tx(&info->stats, res);
-    }else{
+    } else {
         rs_stat_register(&info->stats.tx_stat_errors, 1.0);
     }
 
@@ -123,7 +132,6 @@ int rs_channel_layer_receive(struct rs_channel_layer *layer,
                          unpacked->seq - info->rx_last_seq - 1,
                          &unpacked->stats);
     info->rx_last_seq = unpacked->seq;
-
 
     if (unpacked->command) {
         if (unpacked->command == RS_CHANNEL_CMD_HEARTBEAT) {
@@ -189,9 +197,9 @@ void rs_channel_layer_open_channel(struct rs_channel_layer *layer,
     }
 }
 
-void rs_channel_layer_stats_printf(struct rs_channel_layer* layer){
+void rs_channel_layer_stats_printf(struct rs_channel_layer *layer) {
     for (int i = 0; i < rs_channel_layer_ch_n(layer); i++) {
-        if(layer->channels[i].is_in_use){
+        if (layer->channels[i].is_in_use) {
             printf("-------- %04X --------\n", layer->channels[i].id);
             rs_stats_printf(&layer->channels[i].stats);
         }

@@ -527,7 +527,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                         RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC) {
                 /* broadcast switch or request */
 
-                assert(sizeof(rs_port_id_t) == 2 && sizeof(rs_channel_t) == 2);
+                assert(sizeof(rs_channel_t) == 2);
                 uint8_t cmd[RS_PORT_LAYER_COMMAND_LENGTH] = {
                     /* new channel id */
                     (uint8_t)(layer->ports[i]->cmd_switch_state.new_channel >>
@@ -611,10 +611,11 @@ int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
 int rs_port_layer_update_port(struct rs_port_layer *layer, rs_port_id_t port,
                               int max_packet_size, int fec_k, int fec_m) {
     /* TODO!
-     * These are two independent parameters to be configured - should be improved
+     * These are two independent parameters to be configured - should be
+     * improved.
      * Also FEC is only active for packets below max_packet_size
      *  * small data packets should have FEC (be sent twice e.g.) nonetheless
-     *  * heartbeats should not... 
+     *  * heartbeats should not...
      */
     struct rs_port *p = NULL;
     for (int i = 0; i < layer->n_ports; i++) {

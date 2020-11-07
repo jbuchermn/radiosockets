@@ -15,3 +15,4 @@ transmission methods
 * mt7601u: mt7601u (original kernel module)
 * rt5572: rt2800usb (original kernel module)
     - Creating a new interface works well, the originally created one tends to return "Device or resource busy"
+* Atheros AR9271: ath9k_htc (original kernel module)

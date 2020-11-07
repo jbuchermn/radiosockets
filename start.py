@@ -23,9 +23,9 @@ class FeedDummy:
             print("Could not connect to TCP socket: %s" % e)
 
         while True:
-            msg = "a" * self.frame_size
+            msg = "a" * (self.frame_size - 2)
             try:
-                data_socket.send(msg.encode('ascii'))
+                data_socket.send(bytes([0xFF, 0xD8]) + msg.encode('ascii'))
             except:
                 pass
             await asyncio.sleep(1. / self.frames_per_second)
@@ -120,7 +120,7 @@ if __name__ == '__main__':
     loop.create_task(daemon.run())
     loop.create_task(server.periodical_update(2.))
 
-    loop.create_task(dummy.run_gst() if is_up else dummy.run())
+    loop.create_task(dummy.run())
     loop.create_task(prompt.run())
 
     try:

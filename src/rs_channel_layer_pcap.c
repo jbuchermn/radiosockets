@@ -487,7 +487,7 @@ rs_channel_layer_pcap_phys_channel_unpack(rs_channel_t channel) {
 }
 
 // clang-format off
-// simply doe not like these headers...
+// simply does not like these headers...
 static uint8_t tx_radiotap_header[] __attribute__((unused)) = {
     0x00, 0x00, // it_version, it_pad
     0x0D, 0x00, // it_len
@@ -577,7 +577,6 @@ static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
     tx_len -= sizeof(ieee80211_header);
 
     /* Payload */
-    uint8_t *tx_begin_payload = tx_ptr;
     rs_packet_pack(packet, &tx_ptr, &tx_len);
 
     TIMER_START(pcap_inject);
@@ -587,7 +586,7 @@ static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
     TIMER_STOP(pcap_inject, tx_ptr - tx_buf);
     TIMER_PRINT(pcap_inject, 2);
 
-    return tx_ptr - tx_begin_payload;
+    return tx_ptr - tx_buf;
 }
 
 static int _receive(struct rs_channel_layer *super,
@@ -651,10 +650,10 @@ static int _receive(struct rs_channel_layer *super,
             }
         }
 
-        syslog(LOG_DEBUG, "MCS: %3d <-> Expected: %3d", mcs,
-               rs_channel_layer_pcap_phys_channel_unpack(
-                   rs_channel_layer_extract(&layer->super, channel))
-                   .mcs);
+        /* syslog(LOG_DEBUG, "MCS: %3d <-> Expected: %3d", mcs, */
+        /*        rs_channel_layer_pcap_phys_channel_unpack( */
+        /*            rs_channel_layer_extract(&layer->super, channel)) */
+        /*            .mcs); */
 
         /* syslog(LOG_DEBUG, */
         /*        "rate: %d MCS: known %02x flags %02x mcs %d Channel: %d flags

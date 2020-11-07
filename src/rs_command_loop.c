@@ -97,6 +97,11 @@ static void handle_command(struct rs_message *command,
                         answer->payload_double +
                             (idx * RS_MESSAGE_CMD_REPORT_N));
 
+                    answer->payload_double[idx * RS_MESSAGE_CMD_REPORT_N +
+                                           RS_STATS_PLACE_N] =
+                        rs_stat_current(
+                            &state->channel_layers[c]->channels[ch].tx_stat_dt);
+
                     idx++;
                 }
             }
