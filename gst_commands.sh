@@ -1,6 +1,6 @@
 #!/bin/bash
 if [[ $1 == "feed" ]] ; then
-    gst-launch-1.0 videotestsrc is-live=true ! video/x-raw,width=1280,width=720,framerate=30/1 ! queue ! \
+    gst-launch-1.0 videotestsrc pattern=ball is-live=true ! video/x-raw,width=1280,width=720,framerate=30/1 ! queue ! \
         videoconvert ! \
         jpegenc ! \
         tcpclientsink host=127.0.0.1 port=8885
