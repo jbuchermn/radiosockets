@@ -24,8 +24,8 @@ void rs_app_layer_init(struct rs_app_layer *layer,
     layer->connections = NULL;
     layer->n_connections = 0;
 
-    /* Very important as the call to write on a closed socket results in SIGPIPE,
-     * without handling the signal the call to write blocks */
+    /* Very important as the call to write on a closed socket results in
+     * SIGPIPE, without handling the signal the call to write blocks */
     signal(SIGPIPE, SIG_IGN);
 
     config_setting_t *c = config_lookup(&server->config, "apps");
@@ -50,6 +50,26 @@ int rs_app_layer_open_connection(struct rs_app_layer *layer,
     config_setting_lookup_int(conf, "tcp", &tcp_port);
     config_setting_lookup_int(conf, "frame_size_fixed", &frame_size_fixed);
 
+    const char* _frame_sep;
+    if(config_setting_lookup_string(conf, "frame_sep", &_frame_sep) == CONFIG_TRUE){
+        int len = strlen(_frame_sep);
+        if(!len || len%2){
+            syslog(LOG_ERR, "Invalid frame_sep");
+            return -1;
+        }
+
+        frame_sep_size = len/2;
+        frame_sep = calloc(frame_sep_size, sizeof(uint8_t));
+        for(int i=0; i<frame_sep_size; i++){
+            char c[3];
+            c[0] = _frame_sep[2*i];
+            c[1] = _frame_sep[2*i + 1];
+            c[2] = 0;
+
+            frame_sep[i] = strtol((const char*)&c, NULL, 16);
+        }
+    }
+
     if (port < 0) {
         syslog(LOG_ERR, "Need to specify port");
         return -1;
@@ -58,8 +78,6 @@ int rs_app_layer_open_connection(struct rs_app_layer *layer,
         syslog(LOG_ERR, "Need to specify tcp_port");
         return -1;
     }
-
-    /* TODO: Read frame_sep */
 
     if (frame_sep_size < 0 && frame_size_fixed < 0) {
         syslog(LOG_NOTICE, "app layer: frame size not specified, defaulting to "
@@ -120,11 +138,10 @@ int rs_app_layer_open_connection(struct rs_app_layer *layer,
     new_conn->frame_sep = frame_sep;
     new_conn->frame_sep_size = frame_sep_size;
 
-    new_conn->buffer_size =
-        frame_size_fixed > 0 ? N_FRAMES * frame_size_fixed : RS_APP_BUFFER_SIZE;
-    new_conn->buffer = calloc(new_conn->buffer_size, sizeof(uint8_t));
-    new_conn->buffer_at = 0;
-    new_conn->buffer_start_frame = 0;
+    rs_frame_buffer_init(&new_conn->buffer,
+                         frame_size_fixed > 0 ? frame_size_fixed
+                                              : RS_APP_BUFFER_DEFAULT_SIZE,
+                         N_FRAMES);
 
     new_conn->socket = sock;
     new_conn->addr_server = addr_server;
@@ -183,73 +200,54 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
             if (conn->client_socket < 0)
                 continue;
 
-            /* TODO sep-mode */
-
-            /* collect all frames */
+            /* collect all frames possibly skipping some */
             for (;;) {
                 int recv_len =
-                    recv(conn->client_socket, conn->buffer + conn->buffer_at,
-                         conn->buffer_size - conn->buffer_at, 0);
+                    recv(conn->client_socket,
+                         conn->buffer.buffer + conn->buffer.buffer_at,
+                         conn->buffer.buffer_size - conn->buffer.buffer_at, 0);
 
                 if (recv_len <= 0) {
                     break;
                 }
 
-                conn->buffer_at += recv_len;
                 rs_stat_register(&conn->stat_in, 8 * recv_len);
 
-                if ((conn->buffer_at - conn->buffer_start_frame +
-                     conn->buffer_size) %
-                        conn->buffer_size >=
-                    (N_FRAMES - 1) * conn->frame_size_fixed) {
-
-                    for (int j = 0; j < N_FRAMES - 1; j++)
-                        rs_stat_register(&conn->stat_skipped, 1);
-                    conn->buffer_start_frame =
-                        (conn->buffer_start_frame +
-                         N_FRAMES * conn->frame_size_fixed) %
-                        conn->buffer_size;
+                if (conn->frame_size_fixed > 0) {
+                    rs_frame_buffer_process_fixed_size(&conn->buffer, recv_len,
+                                                       conn->frame_size_fixed);
+                } else {
+                    rs_frame_buffer_process(&conn->buffer, recv_len,
+                                            conn->frame_sep,
+                                            conn->frame_sep_size);
                 }
 
-                if (conn->buffer_at == conn->buffer_size) {
-                    conn->buffer_at = 0;
+                if (conn->buffer.n_frames >= N_FRAMES - 1) {
+                    rs_frame_buffer_flush(&conn->buffer, 1);
                 }
             }
 
-            /* send one frame */
-            if ((conn->buffer_at - conn->buffer_start_frame +
-                 conn->buffer_size) %
-                    conn->buffer_size >=
-                conn->frame_size_fixed) {
+            /* Did we skip frames */
+            for (; conn->buffer.ext_at_frame < 0; conn->buffer.ext_at_frame++)
+                rs_stat_register(&conn->stat_skipped, 1);
 
+            /* send one frame */
+            if (conn->buffer.n_frames > conn->buffer.ext_at_frame) {
                 rs_stat_register(&conn->stat_skipped, 0.0);
 
                 struct rs_packet packet;
-                if (conn->buffer_size - conn->buffer_start_frame >=
-                    conn->frame_size_fixed) {
 
-                    rs_packet_init(&packet, NULL, NULL,
-                                   conn->buffer + conn->buffer_start_frame,
-                                   conn->frame_size_fixed);
-                } else {
-                    uint8_t *tmp = calloc(conn->frame_size_fixed, 1);
-                    memcpy(tmp, conn->buffer + conn->buffer_start_frame,
-                           conn->buffer_size - conn->buffer_start_frame);
-                    memcpy(tmp + (conn->buffer_size - conn->buffer_start_frame),
-                           conn->buffer,
-                           conn->frame_size_fixed -
-                               (conn->buffer_size - conn->buffer_start_frame));
-                    rs_packet_init(&packet, tmp, NULL,
-                                   conn->buffer + conn->buffer_start_frame,
-                                   conn->frame_size_fixed);
-                }
+                rs_packet_init(
+                    &packet, NULL, NULL,
+                    conn->buffer.buffer +
+                        conn->buffer.frame_start[conn->buffer.ext_at_frame],
+                    conn->buffer.frame_start[conn->buffer.ext_at_frame + 1] -
+                        conn->buffer.frame_start[conn->buffer.ext_at_frame]);
                 rs_port_layer_transmit(layer->server->port_layer, &packet,
                                        conn->port);
                 rs_packet_destroy(&packet);
 
-                conn->buffer_start_frame =
-                    (conn->buffer_start_frame + conn->frame_size_fixed) %
-                    conn->buffer_size;
+                conn->buffer.ext_at_frame++;
             }
         }
     }
@@ -259,14 +257,127 @@ void rs_app_connection_destroy(struct rs_app_connection *connection) {
     if (connection->client_socket > 0)
         close(connection->client_socket);
     close(connection->socket);
+    rs_frame_buffer_destroy(&connection->buffer);
+    free(connection->frame_sep);
 }
 
 void rs_app_layer_destroy(struct rs_app_layer *layer) {
     for (int i = 0; i < layer->n_connections; i++) {
         rs_app_connection_destroy(layer->connections[i]);
-        free(layer->connections[i]->buffer);
         free(layer->connections[i]);
     }
 
     free(layer->connections);
+}
+
+void rs_frame_buffer_init(struct rs_frame_buffer *buffer,
+                          int expected_frame_size, int n_frames_max) {
+    buffer->n_frames_max = n_frames_max;
+    buffer->frame_start = calloc(buffer->n_frames_max + 1, sizeof(int));
+    buffer->n_frames = 0;
+    buffer->frame_start[0] = 0;
+
+    buffer->buffer_size = buffer->n_frames_max * expected_frame_size;
+    buffer->buffer = calloc(buffer->buffer_size, sizeof(uint8_t));
+    buffer->buffer_at = 0;
+}
+
+void rs_frame_buffer_destroy(struct rs_frame_buffer *buffer) {
+    free(buffer->buffer);
+    free(buffer->frame_start);
+}
+
+void rs_frame_buffer_process_fixed_size(struct rs_frame_buffer *buffer,
+                                        int new_len, int frame_size_fixed) {
+
+    if (buffer->buffer_size < frame_size_fixed * buffer->n_frames_max) {
+        buffer->buffer_size = frame_size_fixed * buffer->n_frames_max;
+        buffer->buffer =
+            realloc(buffer->buffer, buffer->buffer_size * sizeof(uint8_t));
+    }
+
+    buffer->buffer_at += new_len;
+    while (buffer->n_frames < buffer->n_frames_max &&
+           buffer->buffer_at - buffer->frame_start[buffer->n_frames] >=
+               frame_size_fixed) {
+
+        if (buffer->n_frames == buffer->n_frames_max) {
+            memcpy(buffer->frame_start, buffer->frame_start + 1,
+                   buffer->n_frames_max * sizeof(int));
+            buffer->n_frames--;
+            buffer->ext_at_frame--;
+        }
+
+        buffer->n_frames++;
+        buffer->frame_start[buffer->n_frames] =
+            buffer->frame_start[buffer->n_frames - 1] + frame_size_fixed;
+    }
+}
+
+void rs_frame_buffer_process(struct rs_frame_buffer *buffer, int new_len,
+                             uint8_t *sep, int sep_len) {
+    int start_looking = buffer->buffer_at - sep_len + 1;
+    if (start_looking < 0)
+        start_looking = 0;
+
+    buffer->buffer_at += new_len;
+    int stop_looking = buffer->buffer_at - sep_len;
+
+    for (int i = start_looking; i < stop_looking; i++) {
+        int is_sep = 1;
+        for (int j = 0; j < sep_len; j++) {
+            if (buffer->buffer[i + j] != sep[j]) {
+                is_sep = 0;
+                break;
+            }
+        }
+
+        if (is_sep) {
+            if (buffer->n_frames == buffer->n_frames_max) {
+                memcpy(buffer->frame_start, buffer->frame_start + 1,
+                       buffer->n_frames_max * sizeof(int));
+                buffer->n_frames--;
+                buffer->ext_at_frame--;
+            }
+
+            buffer->n_frames++;
+            buffer->frame_start[buffer->n_frames] = i;
+        }
+    }
+
+    if (buffer->buffer_at == buffer->buffer_size &&
+        buffer->n_frames < buffer->n_frames_max) {
+
+        /* Appears our buffer is too small */
+        buffer->buffer_size *= 2;
+        if (buffer->buffer_size > RS_FRAME_BUFFER_MAX_SIZE) {
+            buffer->buffer_size = RS_FRAME_BUFFER_MAX_SIZE;
+            syslog(LOG_ERR, "Reached maximum frame buffer size - probably "
+                            "there is an issue with frame separators");
+        }
+
+        buffer->buffer =
+            realloc(buffer->buffer, buffer->buffer_size * sizeof(uint8_t));
+    }
+}
+
+void rs_frame_buffer_flush(struct rs_frame_buffer *buffer, int keep_n_frames) {
+    if (keep_n_frames > buffer->n_frames)
+        keep_n_frames = buffer->n_frames;
+
+    int copy_n = buffer->buffer_at -
+                 buffer->frame_start[buffer->n_frames - keep_n_frames];
+    int delta_n = buffer->frame_start[buffer->n_frames - keep_n_frames];
+
+    memcpy(buffer->buffer, buffer->buffer + delta_n, copy_n * sizeof(uint8_t));
+    buffer->buffer_at = copy_n;
+
+    for (int i = 0; i < keep_n_frames + 1; i++) {
+        buffer->frame_start[i] =
+            buffer->frame_start[i + (buffer->n_frames - keep_n_frames)] -
+            delta_n;
+    }
+
+    buffer->ext_at_frame -= buffer->n_frames - keep_n_frames;
+    buffer->n_frames = keep_n_frames;
 }
