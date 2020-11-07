@@ -102,7 +102,7 @@ if __name__ == '__main__':
 
     input("Confirm? ")
 
-    server = App(daemon, False)
+    server = App(daemon, len(sys.argv) > 1 and "gui" in " ".join(sys.argv[1:]))
     dummy = FeedDummy(8885 if is_up else 8881, frame_size, frames_per_second)
     prompt = Prompt(daemon, dummy)
 
