@@ -73,7 +73,7 @@ int rs_port_layer_update_port(struct rs_port_layer *layer, rs_port_id_t port,
 #define RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC 50
 
 #define RS_PORT_CMD_HEARTBEAT 0xDD
-#define RS_PORT_CMD_HEARTBEAT_MSEC 20
+#define RS_PORT_CMD_HEARTBEAT_MSEC 100
 
 struct rs_port {
     rs_port_id_t id;

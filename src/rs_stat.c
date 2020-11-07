@@ -187,7 +187,7 @@ void rs_stats_init(struct rs_stats *stats) {
 
     rs_stat_init(&stats->rx_stat_bits, RS_STAT_AGG_SUM, "RX", "bps",
                  1000. / RS_STAT_DT_MSEC);
-    rs_stat_init(&stats->tx_stat_bits_packet_size, RS_STAT_AGG_AVG, "RX", "bpp",
+    rs_stat_init(&stats->rx_stat_bits_packet_size, RS_STAT_AGG_AVG, "RX", "bpp",
                  1.);
     rs_stat_init(&stats->rx_stat_missed, RS_STAT_AGG_AVG, "RX miss", "", 1.);
 

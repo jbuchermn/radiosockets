@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +23,10 @@ void rs_app_layer_init(struct rs_app_layer *layer,
     layer->server = server;
     layer->connections = NULL;
     layer->n_connections = 0;
+
+    /* Very important as the call to write on a closed socket results in SIGPIPE,
+     * without handling the signal the call to write blocks */
+    signal(SIGPIPE, SIG_IGN);
 
     config_setting_t *c = config_lookup(&server->config, "apps");
     int n_conn_conf = c ? config_setting_length(c) : 0;
@@ -135,6 +140,7 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
     for (int i = 0; i < layer->n_connections; i++) {
         int fd = accept(layer->connections[i]->socket, NULL, NULL);
         if (fd >= 0) {
+
             if (layer->connections[i]->client_socket >= 0) {
                 syslog(LOG_NOTICE, "app layer: Closed connection on port %d\n",
                        layer->connections[i]->port);
@@ -143,6 +149,7 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
 
             syslog(LOG_NOTICE, "app layer: Accepted connection on port %d\n",
                    layer->connections[i]->port);
+
             /* put it in non-blocking mode */
             int flags = fcntl(fd, F_GETFL);
             fcntl(fd, F_SETFL, flags | O_NONBLOCK);
@@ -160,8 +167,9 @@ void rs_app_layer_main(struct rs_app_layer *layer, struct rs_packet *received,
             if (layer->connections[i]->client_socket < 0)
                 continue;
 
-            if (write(layer->connections[i]->client_socket,
-                      received->payload_data, received->payload_data_len) < 0) {
+            int res = write(layer->connections[i]->client_socket,
+                            received->payload_data, received->payload_data_len);
+            if (res < 0) {
                 close(layer->connections[i]->client_socket);
                 layer->connections[i]->client_socket = -1;
                 syslog(LOG_NOTICE, "app layer: Closed connection on port %d\n",

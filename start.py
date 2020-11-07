@@ -30,6 +30,11 @@ class FeedDummy:
                 pass
             await asyncio.sleep(1. / self.frames_per_second)
 
+    async def run_gst(self):
+        await asyncio.sleep(1.)
+        proc = await asyncio.create_subprocess_shell("./gst_commands.sh feed")
+        await proc.communicate()
+
 class Prompt:
     def __init__(self, daemon, dummy):
         self.loop = asyncio.get_event_loop()
