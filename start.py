@@ -15,7 +15,7 @@ class FeedDummy:
         self.frames_per_second = frames_per_second
 
     async def run(self):
-        await asyncio.sleep(1.)
+        await asyncio.sleep(5.)
         data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             data_socket.connect(('127.0.0.1', self.tcp_port))
@@ -31,7 +31,7 @@ class FeedDummy:
             await asyncio.sleep(1. / self.frames_per_second)
 
     async def run_gst(self):
-        await asyncio.sleep(1.)
+        await asyncio.sleep(5.)
         proc = await asyncio.create_subprocess_shell("./gst_commands.sh feed")
         await proc.communicate()
 
