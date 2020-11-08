@@ -65,7 +65,7 @@ int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
 int rs_port_layer_update_port(struct rs_port_layer *layer, rs_port_id_t port,
                               int max_packet_size, int fec_k, int fec_m);
 
-#define RS_PORT_CMD_DUMMY_SIZE 10
+#define RS_PORT_CMD_DUMMY_SIZE 1
 
 #define RS_PORT_CMD_SWITCH_CHANNEL 0xCC
 #define RS_PORT_CMD_REQUEST_SWITCH_CHANNEL 0xC0

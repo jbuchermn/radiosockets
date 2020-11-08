@@ -10,6 +10,7 @@
 
 #include "rs_app_layer.h"
 #include "rs_channel_layer_pcap.h"
+#include "rs_channel_layer_nrf24l01_usb.h"
 #include "rs_command_loop.h"
 #include "rs_packet.h"
 #include "rs_port_layer.h"
@@ -127,6 +128,22 @@ int main(int argc, char **argv) {
             layers1_alloc[n_layers1 - 1] = layer1;
 
             if (rs_channel_layer_pcap_init(layer1, &state, base, conf)) {
+                syslog(LOG_ERR, "Unable to initalize PCAP layer");
+                goto error;
+            }
+
+        } else if (!strcmp(kind, "nrf24l01_usb")) {
+            sprintf(p, "channels.[%d].nrf24l01_usb", i);
+            config_setting_t *conf = config_lookup(&state.config, p);
+
+            struct rs_channel_layer_nrf24l01_usb *layer1 =
+                calloc(1, sizeof(struct rs_channel_layer_nrf24l01_usb));
+
+            n_layers1++;
+            layers1[n_layers1 - 1] = &layer1->super;
+            layers1_alloc[n_layers1 - 1] = layer1;
+
+            if (rs_channel_layer_nrf24l01_usb_init(layer1, &state, base, conf)) {
                 syslog(LOG_ERR, "Unable to initalize PCAP layer");
                 goto error;
             }
