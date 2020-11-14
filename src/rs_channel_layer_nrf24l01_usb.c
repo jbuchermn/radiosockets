@@ -195,9 +195,9 @@ static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
         packet[30] = 0; // CRC
         write(layer->fd_serial, packet, 31);
 
-        /* TODO Either make this unnecessary, or run each
-         * channel layer in a separate thread */
-        usleep(20000);
+        /* TODO Only possible if each channel_layer is run 
+         * in a separate thread */
+        usleep(15000);
     }
     return tx_ptr - tx_buf;
 }
