@@ -71,14 +71,8 @@ void rs_port_layer_create_port(struct rs_port_layer *layer,
     config_setting_lookup_int(config, "owner", &owner);
     owner = (owner == layer->server->own_id);
 
-    int max_packet_size = 1024;
-    config_setting_lookup_int(config, "max_packet_size", &max_packet_size);
-
-    int fec_k = 8;
-    config_setting_lookup_int(config, "fec_k", &fec_k);
-
-    int fec_m = 12;
-    config_setting_lookup_int(config, "fec_m", &fec_m);
+    double fec_factor = 1.5;
+    config_setting_lookup_float(config, "fec_factor", &fec_factor);
 
     int route_cmd = -100;
     config_setting_lookup_int(config, "route_cmd", &route_cmd);
@@ -104,10 +98,12 @@ void rs_port_layer_create_port(struct rs_port_layer *layer,
     rs_stat_init(&new_port->rx_stats_fec_factor, RS_STAT_AGG_AVG, "RX FEC", "",
                  1.);
 
+    new_port->tx_target_fec_factor = fec_factor;
     new_port->tx_fec = NULL;
     new_port->rx_fec = NULL;
-    rs_port_setup_tx_fec(new_port, max_packet_size, fec_k, fec_m);
-    rs_port_setup_rx_fec(new_port, fec_k, fec_m);
+
+    rs_port_setup_tx_fec(new_port, 4, 7);
+    rs_port_setup_rx_fec(new_port, 4, 7);
 
     clock_gettime(CLOCK_REALTIME, &new_port->tx_last_ts);
 
@@ -127,9 +123,7 @@ void rs_port_layer_create_port(struct rs_port_layer *layer,
     }
 }
 
-void rs_port_setup_tx_fec(struct rs_port *port, int max_packet_size, int k,
-                          int m) {
-    port->tx_max_packet_size = max_packet_size;
+void rs_port_setup_tx_fec(struct rs_port *port, int k, int m) {
     if (!port->tx_fec || port->tx_fec_k != k || port->tx_fec_m != m) {
         port->tx_fec_m = m;
         port->tx_fec_k = k;
@@ -173,7 +167,16 @@ static int _transmit_fragmented(struct rs_port_layer *layer,
     /* Split packet if necessary */
     struct rs_port_layer_packet **fragments;
 
-    int n_fragments = rs_port_layer_packet_split(packet, port, &fragments);
+    /* Do not use FEC for commands */
+    double fec_factor = port->tx_target_fec_factor;
+    if (packet->command) {
+        fec_factor = 1.;
+    }
+
+    int n_fragments = rs_port_layer_packet_split(
+        packet, port, &fragments,
+        rs_channel_layer_max_packet_size(channel_layer, port->bound_channel),
+        fec_factor);
     rs_stat_register(&port->tx_stats_fec_factor,
                      (double)fragments[0]->n_frag_encoded /
                          (double)fragments[0]->n_frag_decoded);
@@ -680,14 +683,7 @@ int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
 }
 
 int rs_port_layer_update_port(struct rs_port_layer *layer, rs_port_id_t port,
-                              int max_packet_size, int fec_k, int fec_m) {
-    /* TODO!
-     * These are two independent parameters to be configured - should be
-     * improved.
-     * Also FEC is only active for packets below max_packet_size
-     *  * small data packets should have FEC (be sent twice e.g.) nonetheless
-     *  * heartbeats should not...
-     */
+                              double fec_factor) {
     struct rs_port *p = NULL;
     for (int i = 0; i < layer->n_ports; i++) {
         if (layer->ports[i]->id == port) {
@@ -703,7 +699,7 @@ int rs_port_layer_update_port(struct rs_port_layer *layer, rs_port_id_t port,
     if (!p->owner)
         return -1;
 
-    rs_port_setup_tx_fec(p, max_packet_size, fec_k, fec_m);
+    p->tx_target_fec_factor = fec_factor;
 
     return 0;
 }

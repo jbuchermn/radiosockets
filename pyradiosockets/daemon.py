@@ -175,9 +175,8 @@ class Daemon:
         msg = self._cmd(RS_MESSAGE_CMD_SWITCH_CHANNEL, [port, new_channel])
         return msg.cmd if msg is not None else -1
 
-    def cmd_update_port(self, port, max_packet_size, fec_k, fec_m):
-        msg = self._cmd(RS_MESSAGE_CMD_UPDATE_PORT, [
-                        port, max_packet_size, fec_k, fec_m])
+    def cmd_update_port(self, port, fec_factor):
+        msg = self._cmd(RS_MESSAGE_CMD_UPDATE_PORT, [port], "", [fec_factor])
         return msg.cmd if msg is not None else -1
 
     def cmd_close(self):

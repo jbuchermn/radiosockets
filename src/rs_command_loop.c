@@ -118,12 +118,10 @@ static void handle_command(struct rs_message *command,
 
     } else if (command->header.cmd == RS_MESSAGE_CMD_UPDATE_PORT) {
         rs_port_id_t port = (rs_port_id_t)command->payload_int[0];
-        int max_packet_size = command->payload_int[1];
-        int fec_k = command->payload_int[2];
-        int fec_m = command->payload_int[3];
+        double fec_factor = command->payload_double[0];
 
         answer->header.cmd = rs_port_layer_update_port(
-            state->port_layer, port, max_packet_size, fec_k, fec_m);
+            state->port_layer, port, fec_factor);
     }
 }
 

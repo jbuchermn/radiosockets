@@ -455,7 +455,7 @@ int rs_channel_layer_pcap_init(struct rs_channel_layer_pcap *layer,
     return 0;
 }
 
-void rs_channel_layer_pcap_destroy(struct rs_channel_layer *super) {
+static void _destroy(struct rs_channel_layer *super) {
     rs_channel_layer_base_destroy(super);
 
     struct rs_channel_layer_pcap *layer = rs_cast(rs_channel_layer_pcap, super);
@@ -717,13 +717,18 @@ static int _receive(struct rs_channel_layer *super,
     return RS_CHANNEL_LAYER_EOF;
 }
 
-int rs_channel_layer_pcap_ch_n(struct rs_channel_layer *super) {
+static int _ch_n(struct rs_channel_layer *super) {
     return 12 * 32 * 4;
 }
 
+static int _max_packet_size(struct rs_channel_layer* layer, rs_channel_t channel){
+    return 1350;
+}
+
 static struct rs_channel_layer_vtable vtable = {
-    .destroy = rs_channel_layer_pcap_destroy,
+    .destroy = _destroy,
     ._transmit = _transmit,
     ._receive = _receive,
-    .ch_n = rs_channel_layer_pcap_ch_n,
+    .ch_n = _ch_n,
+    .max_packet_size = _max_packet_size,
 };

@@ -113,28 +113,27 @@ unpack_err:
 
 int rs_port_layer_packet_split(struct rs_port_layer_packet *packet,
                                struct rs_port *port,
-                               struct rs_port_layer_packet ***split) {
+                               struct rs_port_layer_packet ***split,
+                               int max_size_per_packet, double fec_factor) {
     int len_header = rs_packet_len_header(&packet->super);
     int len = rs_packet_len(&packet->super) - len_header;
 
-    /* TODO!
-     * Should this logic really be here? 
-     */
-    if (len <= port->tx_max_packet_size) {
+    if (len <= max_size_per_packet && (fec_factor <= 1.001)) {
         *split = calloc(1, sizeof(void *));
         **split = packet;
         return 1;
     }
 
+    if (/* if FEC does not fit into packets */
+        (port->tx_fec_k * max_size_per_packet < len) ||
+        /* or usage of max_packet_size is below 50% */
+        ((len / port->tx_fec_k) < 0.1 * max_size_per_packet) ||
+        /* or FEC does not match factor */
+        (fabs(fec_factor - port->tx_fec_m / (double)port->tx_fec_k) > 0.2)) {
 
-    /* TODO!
-     * Should this logic really be here? 
-     */
-    if ((port->tx_fec_k * port->tx_max_packet_size < len) ||
-        (len / port->tx_fec_k) < 0.1 * port->tx_max_packet_size) {
-
-        int new_k = ceil((double)len / (double)port->tx_max_packet_size);
-        int new_m = round((double)port->tx_fec_m / (double)port->tx_fec_k * new_k);
+        int new_k = ceil((double)len / (double)max_size_per_packet);
+        int new_m =
+            round((double)port->tx_fec_m / (double)port->tx_fec_k * new_k);
 
         if (new_m > 255) {
             new_k = 255;
@@ -145,9 +144,11 @@ int rs_port_layer_packet_split(struct rs_port_layer_packet *packet,
                    port->id);
         }
 
-        syslog(LOG_NOTICE, "port %d: adjusting FEC to k=%d / m=%d", port->id,
-               new_k, new_m);
-        rs_port_setup_tx_fec(port, port->tx_max_packet_size, new_k, new_m);
+        if (new_k != port->tx_fec_k || new_m != port->tx_fec_m) {
+            syslog(LOG_NOTICE, "port %d: adjusting FEC to k=%d / m=%d",
+                   port->id, new_k, new_m);
+            rs_port_setup_tx_fec(port, new_k, new_m);
+        }
     }
 
     int packet_len = ceil((double)len / (double)port->tx_fec_k);
@@ -220,7 +221,7 @@ int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
     /* Infer / read FEC parameters */
     int packet_len = split[0]->super.payload_data_len;
     rs_port_setup_rx_fec(port, split[0]->n_frag_decoded,
-                      split[0]->n_frag_encoded);
+                         split[0]->n_frag_encoded);
     assert(n_split >= port->rx_fec_k);
 
     /* Allocate packet index array */

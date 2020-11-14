@@ -60,7 +60,8 @@ class Prompt:
                 self._dummy.frames_per_second *= 1 / 0.8
 
             elif cmd == "t":
-                self._daemon.cmd_switch_channel(1, 4121)
+                print("Updating...")
+                self._daemon.cmd_update_port(5, 2.)
 
             self._dummy.frame_size = int(self._dummy.frame_size)
 

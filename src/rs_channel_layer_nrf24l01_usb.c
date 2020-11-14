@@ -259,9 +259,14 @@ static int _receive(struct rs_channel_layer *super,
     return -1;
 }
 
+static int _max_packet_size(struct rs_channel_layer* layer, rs_channel_t channel){
+    return 310;
+}
+
 static struct rs_channel_layer_vtable vtable = {
     .destroy = rs_channel_layer_nrf24l01_usb_destroy,
     ._transmit = _transmit,
     ._receive = _receive,
     .ch_n = _ch_n,
+    .max_packet_size = _max_packet_size
 };

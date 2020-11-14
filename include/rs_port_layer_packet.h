@@ -37,7 +37,9 @@ int rs_port_layer_packet_unpack(struct rs_port_layer_packet *packet,
 
 int rs_port_layer_packet_split(struct rs_port_layer_packet *packet,
                                struct rs_port *port,
-                               struct rs_port_layer_packet ***split);
+                               struct rs_port_layer_packet ***split,
+                               int max_size_per_packet,
+                               double fec_factor);
 
 int rs_port_layer_packet_join(struct rs_port_layer_packet *joined,
                               struct rs_port *port,

@@ -82,6 +82,8 @@ struct rs_channel_layer_vtable {
                     rs_channel_t channel);
 
     int (*ch_n)(struct rs_channel_layer *layer);
+
+    int (*max_packet_size)(struct rs_channel_layer *layer, rs_channel_t cannel);
 };
 
 static inline void rs_channel_layer_destroy(struct rs_channel_layer *layer) {
@@ -91,6 +93,13 @@ static inline void rs_channel_layer_destroy(struct rs_channel_layer *layer) {
 static inline int rs_channel_layer_ch_n(struct rs_channel_layer *layer) {
     return (layer->vtable->ch_n)(layer);
 }
+
+static inline int
+rs_channel_layer_max_packet_size(struct rs_channel_layer *layer,
+                                 rs_channel_t channel) {
+    return (layer->vtable->max_packet_size)(layer, channel);
+}
+
 rs_channel_t rs_channel_layer_ch(struct rs_channel_layer *layer, int i);
 uint16_t rs_channel_layer_extract(struct rs_channel_layer *layer,
                                   rs_channel_t channel);

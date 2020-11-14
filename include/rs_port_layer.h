@@ -63,7 +63,7 @@ void rs_port_layer_stats_printf(struct rs_port_layer *layer);
 int rs_port_layer_switch_channel(struct rs_port_layer *layer, rs_port_id_t port,
                                  rs_channel_t new_channel);
 int rs_port_layer_update_port(struct rs_port_layer *layer, rs_port_id_t port,
-                              int max_packet_size, int fec_k, int fec_m);
+                              double fec_factor);
 
 #define RS_PORT_CMD_DUMMY_SIZE 1
 
@@ -99,7 +99,7 @@ struct rs_port {
         struct rs_port_layer_packet **fragments;
     } frag_buffer;
 
-    int tx_max_packet_size;
+    double tx_target_fec_factor;
     unsigned short tx_fec_m;
     unsigned short tx_fec_k;
     fec_t *tx_fec;
@@ -115,9 +115,9 @@ struct rs_port {
             RS_PORT_CMD_REGULAR
         } config;
         rs_port_id_t route_via_id;
-        struct rs_port* route_via;
+        struct rs_port *route_via;
 
-        struct rs_port** routing_via_this;
+        struct rs_port **routing_via_this;
     } route_cmd;
 
     struct {
@@ -134,8 +134,7 @@ struct rs_port {
     } cmd_switch_state;
 };
 
-void rs_port_setup_tx_fec(struct rs_port *port, int max_packet_size, int k,
-                          int m);
+void rs_port_setup_tx_fec(struct rs_port *port, int k, int m);
 void rs_port_setup_rx_fec(struct rs_port *port, int k, int m);
 
 #endif
