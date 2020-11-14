@@ -37,6 +37,8 @@ int rs_channel_layer_nrf24l01_usb_init(
     struct rs_channel_layer_nrf24l01_usb *layer, struct rs_server_state *server,
     uint8_t ch_base, config_setting_t *conf) {
 
+    syslog(LOG_NOTICE, "Using nrf24l01_usb is highly deprecated");
+
     rs_channel_layer_init(&layer->super, server, ch_base, &vtable);
 
     const char *tty;
@@ -195,8 +197,8 @@ static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
         packet[30] = 0; // CRC
         write(layer->fd_serial, packet, 31);
 
-        /* TODO Only possible if each channel_layer is run 
-         * in a separate thread */
+        /* This really makes this channel-layer unusable - howver the root is in the very poor chinese chip
+         * powering this layer, which makes going beneath this wait time impossible */
         usleep(15000);
     }
     return tx_ptr - tx_buf;
