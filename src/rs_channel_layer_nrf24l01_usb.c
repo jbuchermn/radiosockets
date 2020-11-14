@@ -221,7 +221,7 @@ static int _receive(struct rs_channel_layer *super,
             int n_packets = res[0] / 16;
             int packet = res[0] % 16;
 
-            if (packet != layer->recv_buf_last_n && packet != 0) {
+            if (packet != layer->recv_buf_last_n + 1 && packet != 0) {
                 /* Missed packets, skipping */
                 layer->recv_buf_last_n = -1;
             } else {
