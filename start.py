@@ -88,7 +88,7 @@ if __name__ == '__main__':
         is_up = True
 
     frames_per_second = 30. if is_up else 100.
-    kbits = 2400 if is_up else 100
+    kbits = 2400 if is_up else 20
     frame_size = int(1000. / 8. * kbits / frames_per_second)
 
     if is_up:
@@ -122,6 +122,8 @@ if __name__ == '__main__':
 
     if is_up:
         loop.create_task(dummy.run_gst())
+    else:
+        loop.create_task(dummy.run())
     loop.create_task(prompt.run())
 
     try:

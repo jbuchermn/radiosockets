@@ -129,8 +129,8 @@ int rs_channel_layer_receive(struct rs_channel_layer *layer,
 
     info->is_in_use = 1;
     rs_stats_register_rx(&info->stats, unpacked->super.payload_data_len,
-                         unpacked->seq - info->rx_last_seq - 1,
-                         &unpacked->stats);
+                         unpacked->seq - info->rx_last_seq - 1);
+    rs_stats_register_published_stats(&info->stats, &unpacked->stats);
     info->rx_last_seq = unpacked->seq;
 
     if (unpacked->command) {

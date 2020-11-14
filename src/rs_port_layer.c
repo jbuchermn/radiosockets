@@ -205,8 +205,12 @@ cleanup:
 }
 
 static int _transmit(struct rs_port_layer *layer,
-                     struct rs_port_layer_packet *packet,
-                     struct rs_port *port) {
+                     struct rs_port_layer_packet *packet, struct rs_port *port,
+                     struct rs_port *original_port) {
+
+    if (!original_port) {
+        original_port = port;
+    }
 
     struct rs_channel_layer *ch =
         rs_server_channel_layer_for_channel(layer->server, port->bound_channel);
@@ -214,8 +218,8 @@ static int _transmit(struct rs_port_layer *layer,
         syslog(LOG_ERR, "Invalid channel: %d", port->bound_channel);
     }
 
-    /* Publish stats */
-    rs_stats_packed_init(&packet->stats, &port->stats);
+    /* Publish stats of original_port */
+    rs_stats_packed_init(&packet->stats, &original_port->stats);
 
     int res;
     packet->port = port->id;
@@ -227,6 +231,14 @@ static int _transmit(struct rs_port_layer *layer,
 
         /* Register stats */
         rs_stats_register_tx(&port->stats, packet->payload_len);
+
+        if (original_port != port) {
+            /* Also denote in original_port that something happened - as far as
+             * stats are concerned the TX/RX bytes are on port, not
+             * original_port */
+            original_port->tx_last_seq++;
+            original_port->tx_last_ts = port->tx_last_ts;
+        }
     }
     return res;
 }
@@ -250,7 +262,7 @@ int rs_port_layer_transmit(struct rs_port_layer *layer,
     struct rs_port_layer_packet packed;
     rs_port_layer_packet_init(&packed, NULL, send_packet, NULL, 0);
 
-    int res = _transmit(layer, &packed, p);
+    int res = _transmit(layer, &packed, p, NULL);
 
     rs_packet_destroy(&packed.super);
     return res;
@@ -384,8 +396,7 @@ retry:
             }
 
             rs_stats_register_rx(&port->stats, result->payload_len,
-                                 result->seq - port->rx_last_seq - 1,
-                                 &result->stats);
+                                 result->seq - port->rx_last_seq - 1);
             port->rx_last_seq = result->seq;
 
             if (result->command) {
@@ -396,6 +407,10 @@ retry:
                 free(result);
                 goto retry;
             }
+
+            /* If the packet is a command handling the published stats is taken
+             * care of inside main, otherwise here */
+            rs_stats_register_published_stats(&port->stats, &result->stats);
 
             *port_ret = result->port;
 
@@ -470,19 +485,19 @@ static void _send_command(struct rs_port_layer *layer, struct rs_port *port,
     packet.command = command;
 
     /* Possibly route the packet */
+    struct rs_port *original_port = NULL;
+
     assert(sizeof(rs_port_id_t) == 1);
     if (port->route_cmd.config == RS_PORT_CMD_ROUTE) {
         packet.command_payload[RS_PORT_LAYER_COMMAND_LENGTH - 2] =
             RS_PORT_CMD_MARKER_ROUTED;
         packet.command_payload[RS_PORT_LAYER_COMMAND_LENGTH - 1] = port->id;
 
-        /* a bit hacky, but ensure tx_last_ts is set on original port */
-        clock_gettime(CLOCK_REALTIME, &port->tx_last_ts);
-
+        original_port = port;
         port = port->route_cmd.route_via;
     }
 
-    _transmit(layer, &packet, port);
+    _transmit(layer, &packet, port, original_port);
 
     rs_packet_destroy(&packet.super);
 }
@@ -503,6 +518,19 @@ void rs_port_layer_main(struct rs_port_layer *layer,
             received->command_payload[RS_PORT_LAYER_COMMAND_LENGTH - 1] = 0;
         }
 
+        struct rs_port *port = NULL;
+        for (int i = 0; i < layer->n_ports; i++) {
+            if (layer->ports[i]->id == received->port) {
+                port = layer->ports[i];
+                break;
+            }
+        }
+
+        if (!port)
+            return;
+
+        rs_stats_register_published_stats(&port->stats, &received->stats);
+
         if (received->command == RS_PORT_CMD_HEARTBEAT) {
             /* heartbeat */
 
@@ -513,43 +541,23 @@ void rs_port_layer_main(struct rs_port_layer *layer,
                                    received->command_payload[1];
             int n_broadcasts = received->command_payload[2];
 
-            struct rs_port *p = NULL;
-            for (int i = 0; i < layer->n_ports; i++) {
-                if (layer->ports[i]->id == received->port) {
-                    p = layer->ports[i];
-                    break;
-                }
-            }
-            if (p) {
-                syslog(LOG_NOTICE, "Switch channel announced by owner: %d",
-                       channel);
-                p->cmd_switch_state.state = RS_PORT_CMD_SWITCH_FOLLOWING;
+            syslog(LOG_NOTICE, "Switch channel announced by owner: %d",
+                   channel);
+            port->cmd_switch_state.state = RS_PORT_CMD_SWITCH_FOLLOWING;
 
-                p->cmd_switch_state.at = now;
-                timespec_plus_ms(
-                    &p->cmd_switch_state.at,
-                    (RS_PORT_CMD_SWITCH_N_BROADCAST - n_broadcasts) *
-                        RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC);
-                p->cmd_switch_state.new_channel = channel;
-            }
+            port->cmd_switch_state.at = now;
+            timespec_plus_ms(&port->cmd_switch_state.at,
+                             (RS_PORT_CMD_SWITCH_N_BROADCAST - n_broadcasts) *
+                                 RS_PORT_CMD_SWITCH_DT_BROADCAST_MSEC);
+            port->cmd_switch_state.new_channel = channel;
 
         } else if (received->command == RS_PORT_CMD_REQUEST_SWITCH_CHANNEL) {
             /* request switch channel */
             rs_channel_t channel = (received->command_payload[0] << 8) +
                                    received->command_payload[1];
-            struct rs_port *p = NULL;
-            for (int i = 0; i < layer->n_ports; i++) {
-                if (layer->ports[i]->id == received->port) {
-                    p = layer->ports[i];
-                    break;
-                }
-            }
-            if (p) {
-                syslog(LOG_NOTICE, "Switch channel requested: %d", channel);
-                if (p->cmd_switch_state.state == RS_PORT_CMD_SWITCH_NONE) {
-                    rs_port_layer_switch_channel(layer, received->port,
-                                                 channel);
-                }
+            syslog(LOG_NOTICE, "Switch channel requested: %d", channel);
+            if (port->cmd_switch_state.state == RS_PORT_CMD_SWITCH_NONE) {
+                rs_port_layer_switch_channel(layer, received->port, channel);
             }
         }
     } else {

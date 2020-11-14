@@ -52,25 +52,27 @@ struct rs_stats {
 };
 
 #define RS_STATS_PLACE_N 9
-void rs_stats_place(struct rs_stats* stats, double* into);
+void rs_stats_place(struct rs_stats *stats, double *into);
 
 struct rs_stats_packed;
 
 void rs_stats_init(struct rs_stats *stats);
 void rs_stats_register_tx(struct rs_stats *stats, int bytes);
-void rs_stats_register_rx(struct rs_stats *stats, int bytes, int missed_packets,
-                          struct rs_stats_packed *received_stats);
+void rs_stats_register_rx(struct rs_stats *stats, int bytes,
+                          int missed_packets);
+void rs_stats_register_published_stats(struct rs_stats *stats,
+                                       struct rs_stats_packed *received_stats);
 void rs_stats_printf(struct rs_stats *stats);
 
 struct rs_stats_packed {
-    uint16_t tx_bits;    /* bitrate in kbps */
-    uint16_t rx_bits;    /* bitrate in kbps */
-    uint16_t rx_missed;  /* normalized to 10000 */
+    uint16_t tx_bits;   /* bitrate in kbps */
+    uint16_t rx_bits;   /* bitrate in kbps */
+    uint16_t rx_missed; /* normalized to 10000 */
 };
 
 void rs_stats_packed_init(struct rs_stats_packed *packed,
                           struct rs_stats *from);
-int rs_stats_packed_len(struct rs_stats_packed* packed);
+int rs_stats_packed_len(struct rs_stats_packed *packed);
 int rs_stats_packed_pack(struct rs_stats_packed *packed, uint8_t **buffer,
                          int *buffer_len);
 int rs_stats_packed_unpack(struct rs_stats_packed *unpacked, uint8_t **buffer,
