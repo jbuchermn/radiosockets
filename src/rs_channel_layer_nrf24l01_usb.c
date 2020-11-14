@@ -14,21 +14,11 @@
 
 static struct rs_channel_layer_vtable vtable;
 
-#define CMD_SLEEP 100000
+#define CMD_SLEEP 10000
 
-static void _cmd(int fd, const char *cmd, char *res, int res_len) {
+static void _cmd(int fd, const char *cmd) {
     write(fd, cmd, strlen(cmd));
-    memset(res, 0, res_len);
-
-    int n_res = 0;
-    int n = 0;
     usleep(CMD_SLEEP);
-    while ((n = read(fd, res + n_res, res_len - n_res)) > 0) {
-        n_res += n;
-        usleep(CMD_SLEEP);
-        if (n_res == res_len)
-            n_res = 0;
-    }
 }
 
 static void _set_channel(struct rs_channel_layer_nrf24l01_usb *layer,
@@ -37,9 +27,8 @@ static void _set_channel(struct rs_channel_layer_nrf24l01_usb *layer,
         return;
 
     char cmd[200] = {0};
-    char buf[1000] = {0};
     sprintf(cmd, "AT+FREQ=2.%dG", (n_channel + 400));
-    _cmd(layer->fd_serial, cmd, buf, sizeof(buf));
+    _cmd(layer->fd_serial, cmd);
 
     layer->on_channel = n_channel;
 }
@@ -117,12 +106,10 @@ int rs_channel_layer_nrf24l01_usb_init(
     }
 
     // Set Baud rate to 115200
-    char buf[1000];
-
     // 2 = 9600
     // 6 = 57600
     // 7 = 115200
-    _cmd(layer->fd_serial, "AT+BAUD=7", buf, sizeof(buf));
+    _cmd(layer->fd_serial, "AT+BAUD=7");
 
     // Update Baud rate
     if (tcgetattr(layer->fd_serial, &tty_conf)) {
@@ -136,37 +123,39 @@ int rs_channel_layer_nrf24l01_usb_init(
         return -1;
     }
 
-    /* Retrieve config to check connection */
-    _cmd(layer->fd_serial, "AT?", buf, sizeof(buf)); // Flush buf
-    _cmd(layer->fd_serial, "AT?", buf, sizeof(buf));
 
-    if (buf[0] != 'O' || buf[1] != 'K') {
-        printf("AT? %s\n", buf);
-        syslog(LOG_ERR, "Cannot connect to nRF24L01 module on %s", tty);
-        return -1;
-    } else {
-        syslog(LOG_NOTICE, "Successfully connected to nRF24L01 on %s", tty);
-    }
+    /* Retrieve config to check connection */
+    _cmd(layer->fd_serial, "AT?"); // Flush buf
+    _cmd(layer->fd_serial, "AT?");
+
+    /* if (buf[0] != 'O' || buf[1] != 'K') { */
+    /*     printf("AT? %s\n", buf); */
+    /*     syslog(LOG_ERR, "Cannot connect to nRF24L01 module on %s", tty); */
+    /*     return -1; */
+    /* } else { */
+    /* } */
 
     /* Configure module */
     assert(sizeof(rs_server_id_t) == 2);
     char cmd[200] = {0};
 
     // Rate 250kbits (limited by chinese Baud)
-    _cmd(layer->fd_serial, "AT+RATE=1", buf, sizeof(buf));
+    _cmd(layer->fd_serial, "AT+RATE=1");
 
     // Adresses
     sprintf(cmd, "AT+RXA=0xFF,0xFF,0xFF,0x%.2X,0x%.2X", (server->own_id >> 8),
             server->own_id & 0xFF);
-    _cmd(layer->fd_serial, cmd, buf, sizeof(buf));
+    _cmd(layer->fd_serial, cmd);
 
     sprintf(cmd, "AT+TXA=0xFF,0xFF,0xFF,0x%.2X,0x%.2X", (server->other_id >> 8),
             server->other_id & 0xFF);
-    _cmd(layer->fd_serial, cmd, buf, sizeof(buf));
+    _cmd(layer->fd_serial, cmd);
 
     // Initial channel
     layer->on_channel = -1;
     _set_channel(layer, 100);
+
+    syslog(LOG_NOTICE, "Initialized nRF24L01 on %s", tty);
 
     layer->recv_buf_last_n = -1;
 
@@ -205,6 +194,10 @@ static int _transmit(struct rs_channel_layer *super, struct rs_packet *packet,
         memcpy(packet + 1, tx_buf + i * 29, 29);
         packet[30] = 0; // CRC
         write(layer->fd_serial, packet, 31);
+
+        /* TODO Either make this unnecessary, or run each
+         * channel layer in a separate thread */
+        usleep(20000);
     }
     return tx_ptr - tx_buf;
 }

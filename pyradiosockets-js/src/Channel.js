@@ -29,8 +29,8 @@ const opts = {
         yAxes: [{
             ticks: {
                 beginAtZero: 0,
-                suggestedMin: 0.5,
-                suggestedMax: 0.5
+                suggestedMin: 0.005,
+                suggestedMax: 0.005
             }
         }]
     }
@@ -65,11 +65,11 @@ export default (props) => {
                     <Line data={{
                         labels: props.report.stats.map((_, i) => i),
                         datasets: [
-                            {
+                            /*{
                                 ...args('rgba(155,155,155)'),
                                 label: 'TX Mbps (estimated bw)',
                                 data: props.report.stats.map(r => r.tx_bits / r.tx_dt / 1000000)
-                            },
+                            },*/
                             {
                                 ...args('rgba(155,102,192)'),
                                 label: 'TX Mbps',

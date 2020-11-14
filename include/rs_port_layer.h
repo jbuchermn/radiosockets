@@ -2,6 +2,7 @@
 #define RS_PORT_LAYER_H
 
 #include "zfec/zfec/fec.h"
+#include <libconfig.h>
 #include <stdint.h>
 #include <time.h>
 
@@ -30,9 +31,8 @@ struct rs_port_layer {
 void rs_port_layer_init(struct rs_port_layer *layer,
                         struct rs_server_state *server);
 
-void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
-                               rs_channel_t bound_to, int owner,
-                               int max_packet_size, int fec_k, int fec_m);
+void rs_port_layer_create_port(struct rs_port_layer *layer,
+                               config_setting_t *config);
 
 void rs_port_layer_destroy(struct rs_port_layer *layer);
 
@@ -75,6 +75,8 @@ int rs_port_layer_update_port(struct rs_port_layer *layer, rs_port_id_t port,
 #define RS_PORT_CMD_HEARTBEAT 0xDD
 #define RS_PORT_CMD_HEARTBEAT_MSEC 100
 
+#define RS_PORT_CMD_MARKER_ROUTED 0x12
+
 struct rs_port {
     rs_port_id_t id;
     int owner;
@@ -108,6 +110,18 @@ struct rs_port {
 
     struct {
         enum {
+            RS_PORT_CMD_DISABLE,
+            RS_PORT_CMD_ROUTE,
+            RS_PORT_CMD_REGULAR
+        } config;
+        rs_port_id_t route_via_id;
+        struct rs_port* route_via;
+
+        struct rs_port** routing_via_this;
+    } route_cmd;
+
+    struct {
+        enum {
             RS_PORT_CMD_SWITCH_NONE,
             RS_PORT_CMD_SWITCH_OWNING,
             RS_PORT_CMD_SWITCH_FOLLOWING,
@@ -120,7 +134,8 @@ struct rs_port {
     } cmd_switch_state;
 };
 
-void rs_port_setup_tx_fec(struct rs_port *port, int max_packet_size, int k, int m);
+void rs_port_setup_tx_fec(struct rs_port *port, int max_packet_size, int k,
+                          int m);
 void rs_port_setup_rx_fec(struct rs_port *port, int k, int m);
 
 #endif

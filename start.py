@@ -120,7 +120,8 @@ if __name__ == '__main__':
     loop.create_task(daemon.run())
     loop.create_task(server.periodical_update(2.))
 
-    loop.create_task(dummy.run_gst() if is_up else dummy.run())
+    if is_up:
+        loop.create_task(dummy.run_gst())
     loop.create_task(prompt.run())
 
     try:

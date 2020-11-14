@@ -23,41 +23,66 @@ void rs_port_layer_init(struct rs_port_layer *layer,
     config_setting_t *c = config_lookup(&server->config, "ports");
     int n_ports_conf = c ? config_setting_length(c) : 0;
     for (int i = 0; i < n_ports_conf; i++) {
-        char p[100];
+        rs_port_layer_create_port(layer, config_setting_get_elem(c, i));
+    }
 
-        int id;
-        sprintf(p, "ports.[%d].id", i);
-        config_lookup_int(&server->config, p, &id);
+    /* connect heartbeat routes */
+    for (int i = 0; i < layer->n_ports; i++) {
+        if (layer->ports[i]->route_cmd.config == RS_PORT_CMD_ROUTE) {
+            rs_port_id_t via = layer->ports[i]->route_cmd.route_via_id;
+            layer->ports[i]->route_cmd.route_via = NULL;
 
-        int bound_channel;
-        sprintf(p, "ports.[%d].bound_channel", i);
-        config_lookup_int(&server->config, p, &bound_channel);
+            for (int j = 0; j < layer->n_ports; j++) {
+                if (layer->ports[j]->id == via) {
+                    int n = 0;
+                    for (void *p = layer->ports[j]->route_cmd.routing_via_this;
+                         p; p++)
+                        n++;
+                    layer->ports[j]->route_cmd.routing_via_this = realloc(
+                        layer->ports[j]->route_cmd.routing_via_this, n + 1);
 
-        int owner = server->other_id;
-        sprintf(p, "ports.[%d].owner", i);
-        config_lookup_int(&server->config, p, &owner);
+                    layer->ports[j]->route_cmd.routing_via_this[n] =
+                        layer->ports[i];
+                    layer->ports[j]->route_cmd.routing_via_this[n + 1] = NULL;
 
-        int max_packet_size = 1024;
-        sprintf(p, "ports.[%d].max_packet_size", i);
-        config_lookup_int(&server->config, p, &max_packet_size);
+                    layer->ports[i]->route_cmd.route_via = layer->ports[j];
+                }
+            }
 
-        int fec_k = 8;
-        sprintf(p, "ports.[%d].fec_k", i);
-        config_lookup_int(&server->config, p, &fec_k);
-
-        int fec_m = 12;
-        sprintf(p, "ports.[%d].fec_m", i);
-        config_lookup_int(&server->config, p, &fec_m);
-
-        rs_port_layer_create_port(layer, id, bound_channel,
-                                  owner == server->own_id, max_packet_size,
-                                  fec_k, fec_m);
+            if (!layer->ports[i]->route_cmd.route_via) {
+                syslog(LOG_ERR, "Could not create heartbeat route %d -> %d",
+                       layer->ports[i]->id, via);
+                layer->ports[i]->route_cmd.config = RS_PORT_CMD_REGULAR;
+            }
+        }
     }
 }
 
-void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
-                               rs_channel_t bound_to, int owner,
-                               int max_packet_size, int fec_k, int fec_m) {
+void rs_port_layer_create_port(struct rs_port_layer *layer,
+                               config_setting_t *config) {
+
+    int port;
+    config_setting_lookup_int(config, "id", &port);
+
+    int bound_channel;
+    config_setting_lookup_int(config, "bound_channel", &bound_channel);
+
+    int owner = layer->server->other_id;
+    config_setting_lookup_int(config, "owner", &owner);
+    owner = (owner == layer->server->own_id);
+
+    int max_packet_size = 1024;
+    config_setting_lookup_int(config, "max_packet_size", &max_packet_size);
+
+    int fec_k = 8;
+    config_setting_lookup_int(config, "fec_k", &fec_k);
+
+    int fec_m = 12;
+    config_setting_lookup_int(config, "fec_m", &fec_m);
+
+    int route_cmd = -100;
+    config_setting_lookup_int(config, "route_cmd", &route_cmd);
+
     if (port) {
         for (int i = 0; i < layer->n_ports; i++) {
             if (layer->ports[i]->id == port) {
@@ -69,7 +94,7 @@ void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
 
     struct rs_port *new_port = calloc(1, sizeof(struct rs_port));
     new_port->id = port;
-    new_port->bound_channel = bound_to;
+    new_port->bound_channel = bound_channel;
     new_port->tx_last_seq = 0;
     new_port->owner = owner;
     memset(&new_port->frag_buffer, 0, sizeof(new_port->frag_buffer));
@@ -89,6 +114,17 @@ void rs_port_layer_create_port(struct rs_port_layer *layer, rs_port_id_t port,
     layer->n_ports++;
     layer->ports = realloc(layer->ports, layer->n_ports * sizeof(void *));
     layer->ports[layer->n_ports - 1] = new_port;
+
+    new_port->route_cmd.routing_via_this = calloc(1, sizeof(void *));
+    *(new_port->route_cmd.routing_via_this) = NULL;
+    if (route_cmd == -1) {
+        new_port->route_cmd.config = RS_PORT_CMD_DISABLE;
+    } else if (route_cmd >= 0) {
+        new_port->route_cmd.config = RS_PORT_CMD_ROUTE;
+        new_port->route_cmd.route_via_id = route_cmd;
+    } else {
+        new_port->route_cmd.config = RS_PORT_CMD_REGULAR;
+    }
 }
 
 void rs_port_setup_tx_fec(struct rs_port *port, int max_packet_size, int k,
@@ -423,6 +459,7 @@ int rs_port_layer_receive(struct rs_port_layer *layer,
 
 static void _send_command(struct rs_port_layer *layer, struct rs_port *port,
                           uint8_t command, const uint8_t *command_payload) {
+
     static uint8_t dummy[RS_PORT_CMD_DUMMY_SIZE];
 
     struct rs_port_layer_packet packet;
@@ -431,6 +468,19 @@ static void _send_command(struct rs_port_layer *layer, struct rs_port *port,
     memcpy(packet.command_payload, command_payload,
            RS_PORT_LAYER_COMMAND_LENGTH);
     packet.command = command;
+
+    /* Possibly route the packet */
+    assert(sizeof(rs_port_id_t) == 1);
+    if (port->route_cmd.config == RS_PORT_CMD_ROUTE) {
+        packet.command_payload[RS_PORT_LAYER_COMMAND_LENGTH - 2] =
+            RS_PORT_CMD_MARKER_ROUTED;
+        packet.command_payload[RS_PORT_LAYER_COMMAND_LENGTH - 1] = port->id;
+
+        /* a bit hacky, but ensure tx_last_ts is set on original port */
+        clock_gettime(CLOCK_REALTIME, &port->tx_last_ts);
+
+        port = port->route_cmd.route_via;
+    }
 
     _transmit(layer, &packet, port);
 
@@ -443,6 +493,16 @@ void rs_port_layer_main(struct rs_port_layer *layer,
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
     if (received) {
+        /* Handle routed commands */
+        assert(sizeof(rs_port_id_t) == 1);
+        if (received->command_payload[RS_PORT_LAYER_COMMAND_LENGTH - 2] ==
+            RS_PORT_CMD_MARKER_ROUTED) {
+            received->port =
+                received->command_payload[RS_PORT_LAYER_COMMAND_LENGTH - 1];
+            received->command_payload[RS_PORT_LAYER_COMMAND_LENGTH - 2] = 0;
+            received->command_payload[RS_PORT_LAYER_COMMAND_LENGTH - 1] = 0;
+        }
+
         if (received->command == RS_PORT_CMD_HEARTBEAT) {
             /* heartbeat */
 
@@ -493,14 +553,16 @@ void rs_port_layer_main(struct rs_port_layer *layer,
             }
         }
     } else {
-        /* ensure all needed channels (and no more are opened) */
+        /* ensure all channels (needed for TX) and no more are opened */
         for (int i = 0; i < layer->server->n_channel_layers; i++) {
             rs_channel_layer_close_all_channels(
                 layer->server->channel_layers[i]);
             for (int j = 0; j < layer->n_ports; j++) {
                 if (rs_channel_layer_owns_channel(
                         layer->server->channel_layers[i],
-                        layer->ports[j]->bound_channel)) {
+                        layer->ports[j]->bound_channel) &&
+                    layer->ports[j]->route_cmd.config == RS_PORT_CMD_REGULAR) {
+
                     rs_channel_layer_open_channel(
                         layer->server->channel_layers[i],
                         layer->ports[j]->bound_channel);
@@ -565,6 +627,7 @@ void rs_port_layer_main(struct rs_port_layer *layer,
 
         /* Heartbeats */
         for (int i = 0; i < layer->n_ports; i++) {
+
             long msec = msec_diff(now, layer->ports[i]->tx_last_ts);
 
             if (msec >= RS_PORT_CMD_HEARTBEAT_MSEC) {
