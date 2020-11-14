@@ -130,10 +130,10 @@ int rs_port_layer_packet_split(struct rs_port_layer_packet *packet,
         ((len / port->tx_fec_k) < 0.1 * max_size_per_packet) ||
         /* or FEC does not match factor */
         (fabs(fec_factor - port->tx_fec_m / (double)port->tx_fec_k) > 0.2)) {
-
+        
         int new_k = ceil((double)len / (double)max_size_per_packet);
-        int new_m =
-            round((double)port->tx_fec_m / (double)port->tx_fec_k * new_k);
+        if(!new_k) new_k = 1;
+        int new_m = round(fec_factor * new_k);
 
         if (new_m > 255) {
             new_k = 255;
